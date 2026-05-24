@@ -8,10 +8,12 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003B57?style=flat-square&logo=sqlite)](https://orm.drizzle.team)
 
-> **사람의 개입 없이 실제로 동작하는 프로젝트를 완성한다.**
-> 빌드 오류, 타입 오류, 린트 오류가 남은 프로젝트는 "완성"이 아니다.
+> **Finish working projects with zero human intervention.**
+> A project with build errors, type errors, or lint errors is not "done."
 
-A Claude Code skill that runs a fully autonomous pipeline: interactive setup → trend research → idea scoring → competitive analysis → GitHub dedup → build → auto QA loop → README generation → GitHub push → report. No human intervention after the initial 4 questions.
+A Claude Code skill that runs a fully autonomous pipeline: interactive setup → trend research → idea scoring → competitive analysis → GitHub dedup → build → auto QA loop → README generation → GitHub push → report.
+
+[한국어 문서 →](README_ko.md)
 
 ---
 
@@ -22,7 +24,7 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
         │
         ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Phase -1  체크포인트 확인 + 인터랙티브 설정 (4 questions) │
+│  Phase -1  Checkpoint check + Interactive setup (×4)    │
 └──────────────────────────┬──────────────────────────────┘
                            │
         ┌──────────────────┴──────────────────┐
@@ -43,33 +45,34 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
                        ▼
         ┌──────────────────────────────┐
         │  Phase 1.3  Idea Scoring     │
-        │  시장성 · 독창성 · 구현가능성  │
-        │  /9점  →  미달 시 자동 재생성  │
+        │  Market · Originality ·      │
+        │  Feasibility  /9 pts         │
+        │  → auto-reroll if below 5    │
         └──────────────┬───────────────┘
                        ▼
         ┌──────────────────────────────┐
         │  Phase 1.5  GitHub Dedup     │
-        │  내 레포와 중복 검토           │
+        │  Skip ideas already built    │
         └──────────────┬───────────────┘
                        ▼
         ┌──────────────────────────────────────────────────┐
-        │  Phase 2  Build Loop  (프로젝트 수만큼 반복)        │
+        │  Phase 2  Build Loop  (repeated per project)     │
         │                                                  │
-        │  2-1  PRD 작성                                    │
-        │  2-2  ROADMAP + Sprint 계획                       │
-        │  2-3  구현                                        │
-        │  2-4  ★ 자동 QA 루프 (tsc / lint / build)         │
-        │       └─ 실패 시 build-error-resolver 최대 3회     │
-        │  2-5  README 자동 생성                             │
+        │  2-1  Write PRD                                  │
+        │  2-2  Write ROADMAP + Sprint plan                │
+        │  2-3  Implement                                  │
+        │  2-4  ★ Auto QA loop (tsc / lint / build)        │
+        │       └─ on fail: build-error-resolver ×3        │
+        │  2-5  Auto-generate README                       │
         │  2-6  GitHub push                                │
-        │  2-7  macOS 완료 알림                              │
-        │  2-8  체크포인트 저장                               │
+        │  2-7  macOS completion notification              │
+        │  2-8  Save checkpoint                            │
         └──────────────┬───────────────────────────────────┘
                        ▼
         ┌──────────────────────────────┐
         │  Phase 3  Reports            │
         │  YYYYMMDD_report.html        │
-        │  overview.html (누적 갱신)    │
+        │  overview.html  (cumulative) │
         └──────────────────────────────┘
 ```
 
@@ -83,7 +86,7 @@ curl -o ~/.claude/skills/auto-project-builder/SKILL.md \
   https://raw.githubusercontent.com/hongmacho/auto-project-builder/main/skills/auto-project-builder/SKILL.md
 ```
 
-Claude Code를 재시작하면 `/skills` 목록에 `auto-project-builder`가 나타납니다.
+Restart Claude Code — the skill will appear in `/skills`.
 
 ---
 
@@ -93,150 +96,148 @@ Claude Code를 재시작하면 `/skills` 목록에 `auto-project-builder`가 나
 /auto-project-builder
 ```
 
-### 시작 시 묻는 4가지 질문
+The skill asks 4 questions at startup, then runs fully autonomously.
 
-| # | 질문 | 선택지 |
-|---|------|--------|
-| 1 | 플랫폼 | 웹 / 앱 / CLI / 자유롭게 |
-| 2 | 기술 스택 | 플랫폼에 따라 자동 생성 |
-| 3 | 서비스 유형 | 생산성 / 콘텐츠 / 커머스 / 교육 등 10가지 (복수 선택) |
-| 4 | 프로젝트 수 | 기본값 5, 최대 10 |
-
-이후 사람의 개입 없이 끝까지 실행됩니다.
+| # | Question | Options |
+|---|----------|---------|
+| 1 | Platform | Web / Mobile App / CLI / Custom |
+| 2 | Tech Stack | Auto-generated based on platform |
+| 3 | Service Type | Productivity / Content / Commerce / Education / etc. (multi-select) |
+| 4 | Count | Default 5, max 10 |
 
 ---
 
 ## Features
 
-### 체크포인트 재개
-실행 중 중단되더라도 `.auto-project-builder-checkpoint.json`에 진행 상태가 저장됩니다. 다음 실행 시 완료된 프로젝트는 건너뛰고 남은 것부터 이어서 진행합니다.
+### Checkpoint Resume
+Progress is saved to `.auto-project-builder-checkpoint.json` after each completed project. If the run is interrupted, the next invocation offers to resume from where it left off — completed projects are skipped automatically.
 
-### 트렌드 기반 아이디어 생성
-Context7 스택 조사와 병렬로 Product Hunt / GitHub Trending을 검색합니다. 요즘 시장에서 뜨는 카테고리와 아직 해결 안 된 문제(market gap)를 아이디어에 반영합니다.
+### Trend-Based Idea Generation
+In parallel with Context7 stack research, the skill searches Product Hunt and GitHub Trending to find categories gaining traction and unsolved market gaps. These feed directly into idea generation.
 
-### 아이디어 사전 평가
-생성된 아이디어를 빌드 전에 3가지 기준으로 점수화합니다.
+### Idea Scoring
+Every idea is scored before building begins.
 
-| 항목 | 1점 | 2점 | 3점 |
-|------|-----|-----|-----|
-| 시장성 | 경쟁 포화 | 틈새 시장 | 경쟁 공백 |
-| 독창성 | 명백한 클론 | 개선된 클론 | 새로운 접근 |
-| 구현 가능성 | 스택 불일치 | 가능하나 복잡 | 스택에 최적 |
+| Criterion | 1 pt | 2 pts | 3 pts |
+|-----------|------|-------|-------|
+| Market fit | Saturated niche | Some differentiation | Clear gap |
+| Originality | Obvious clone | Improved clone | Novel approach |
+| Feasibility | Wrong stack | Possible but complex | Perfect stack fit |
 
-합계 5점 미만이면 자동으로 새 아이디어를 재생성합니다.
+Ideas scoring below 5/9 are automatically replaced with a new idea.
 
-### 경쟁 분석
-각 아이디어마다 Exa로 유사 서비스를 검색합니다. 경쟁 서비스가 발견되면 차별점을 명시하고, 경쟁 공백 영역이면 가산점을 부여합니다.
+### Competitive Analysis
+For each idea, the skill runs an Exa search for similar services. If competitors are found, the differentiation section is populated concretely. If no competitors exist, it is flagged as a market gap — a scoring bonus.
 
-### GitHub 중복 검토
-`gh repo list`로 이미 만든 레포와 유사한 아이디어를 탈락시키고 대체 아이디어를 생성합니다.
+### GitHub Dedup
+Runs `gh repo list` and filters out ideas that are too similar to existing repositories, then auto-generates replacements.
 
-### 자동 QA 루프 (핵심)
-구현 완료 후 스택별 검증 명령을 실행합니다.
+### Auto QA Loop (Core)
+After implementation, stack-specific validation commands are executed.
 
-| 스택 | QA 명령 |
-|------|---------|
-| TypeScript (웹/CLI) | `tsc --noEmit && lint && build` |
-| Expo (앱) | `expo-doctor && tsc --noEmit` |
+| Stack | QA Commands |
+|-------|-------------|
+| TypeScript (Web / CLI) | `tsc --noEmit && lint && build` |
+| Expo (App) | `expo-doctor && tsc --noEmit` |
 | Python | `mypy && pytest` |
 | Go | `vet && build && test` |
 | Rust | `check && clippy && test` |
 
-실패 시 `build-error-resolver` 에이전트에 오류를 넘겨 자동 수정합니다. 최대 3회 시도 후에도 실패하면 Nice-to-have 기능을 제거하고 Must-have만 재구현합니다. 그래도 실패하면 해당 프로젝트는 SKIP 처리하고 다음으로 넘어갑니다.
+On failure, errors are handed to the `build-error-resolver` agent for automatic fixing. Up to 3 attempts. If all 3 fail, Nice-to-have features are stripped and only Must-have features are re-implemented. If that still fails, the project is marked SKIP and the next project begins.
 
-### README 자동 생성
-QA를 통과한 프로젝트마다 기능 목록, 설치 방법, 실행 명령이 포함된 `README.md`를 자동 생성합니다.
+### Auto README Generation
+After each QA pass, a `README.md` is generated for the project containing: feature list, tech stack table, prerequisites, installation steps, and usage commands.
 
-### 완료 알림
-프로젝트 1개 완료마다 macOS 알림을 발송합니다. 오래 걸리는 작업 중 자리를 비워도 됩니다.
+### Completion Notifications
+A macOS notification is fired after each project completes so you can step away during long runs.
 
 ---
 
 ## Supported Tech Stacks
 
-### 웹 (Web)
-| 선택지 | 스택 |
-|--------|------|
-| ① 추천 | Next.js 14+ App Router · shadcn/ui · Drizzle ORM · SQLite |
+### Web
+| Option | Stack |
+|--------|-------|
+| ① Recommended | Next.js 14+ App Router · shadcn/ui · Drizzle ORM · SQLite |
 | ② | Nuxt 3 · Tailwind CSS · PGlite |
 | ③ | SvelteKit · shadcn-svelte · Drizzle ORM · SQLite |
 | ④ | Remix · shadcn/ui · Drizzle ORM · SQLite |
-| ⑤ | 자유 입력 |
+| ⑤ | Custom input |
 
-### 앱 (Mobile App)
-| 선택지 | 스택 |
-|--------|------|
-| ① 추천 | React Native + Expo · expo-sqlite |
+### Mobile App
+| Option | Stack |
+|--------|-------|
+| ① Recommended | React Native + Expo · expo-sqlite |
 | ② | Flutter 3 · Dart · sqflite |
 | ③ | SwiftUI (iOS) · CoreData |
 | ④ | Jetpack Compose (Android) · Room |
-| ⑤ | 자유 입력 |
+| ⑤ | Custom input |
 
 ### CLI
-| 선택지 | 스택 |
-|--------|------|
-| ① 추천 | Node.js · TypeScript · Commander.js · SQLite |
+| Option | Stack |
+|--------|-------|
+| ① Recommended | Node.js · TypeScript · Commander.js · SQLite |
 | ② | Python 3.12 · Typer / Click · SQLite |
 | ③ | Go 1.22 · Cobra · SQLite |
 | ④ | Rust · Clap · ratatui · SQLite |
-| ⑤ | 자유 입력 |
+| ⑤ | Custom input |
 
 ---
 
 ## Output
 
 ```
-{작업 디렉토리}/
+{working directory}/
 ├── projects/
 │   └── {slug}/
 │       ├── docs/
 │       │   ├── PRD.md
 │       │   └── ROADMAP.md
-│       ├── README.md              ← 자동 생성
-│       └── ... (소스 코드)
+│       ├── README.md              ← auto-generated
+│       └── ... (source code)
 ├── report_data/
 │   └── {slug}_log.json
-├── .auto-project-builder-checkpoint.json  ← 실행 중 존재, 완료 시 자동 삭제
-├── YYYYMMDD_report.html           ← 실행별 보고서 (한국어)
-└── overview.html                  ← 전체 누적 카탈로그
+├── .auto-project-builder-checkpoint.json  ← exists during run, deleted on completion
+├── YYYYMMDD_report.html           ← per-run report (in Korean)
+└── overview.html                  ← cumulative catalog, updated every run
 ```
 
 ### `YYYYMMDD_report.html`
-실행마다 날짜가 붙은 보고서가 새로 생성됩니다. 포함 내용:
-- 실행 요약 대시보드 (트렌드 조사 결과 포함)
-- 아이디어 평가 점수 분포 + 탈락 사유
-- 프로젝트별 상세 카드 (경쟁 분석, QA 시도 횟수, 수정된 오류 목록)
-- 전체 회고
+A new dated report is created for every run. Includes:
+- Run summary dashboard (trend research results, QA stats)
+- Idea scoring distribution + rejection reasons
+- Per-project cards (competitive analysis, QA attempts, errors fixed)
+- Full retrospective
 
 ### `overview.html`
-실행할 때마다 누적 갱신됩니다. 포함 내용:
-- 실행 이력 타임라인 (각 report.html 링크)
-- 플랫폼 / 유형 / 점수 필터가 있는 전체 프로젝트 카탈로그
-- 통계 대시보드 (총 프로젝트 수, 스택 분포, 평균 QA 재시도 횟수, 평균 아이디어 점수)
+Updated cumulatively across all runs. Includes:
+- Run history timeline (links to each report)
+- Full project catalog with platform / type / score filters
+- Statistics dashboard (total projects, stack distribution, average QA attempts, average idea score)
 
 ---
 
 ## Prerequisites
 
-- `gh` CLI 로그인 완료 (`gh auth login`)
-- Node.js 18+ (웹/CLI 프로젝트용)
-- Git 설정 완료
-- Context7 MCP 서버 활성화 (최신 스택 문서 조사용)
+- `gh` CLI authenticated (`gh auth login`)
+- Node.js 18+ (for Web / CLI projects)
+- Git configured
+- Context7 MCP server enabled (for latest stack research)
 
 ---
 
 ## Fallback Strategy
 
-문제 발생 시 4단계 폴백을 자동으로 실행합니다:
+Four-tier automatic fallback on errors:
 
 ```
-1차  build-error-resolver 에이전트 위임 (자동 수정)
-2차  build-error-resolver 재시도 (스코프 축소 힌트 포함)
-3차  Nice-to-have 제거 → Must-have만 재구현 → QA 1회
-4차  SKIP 마킹 + 오류 상세 기록 후 다음 프로젝트로 진행
+1st  build-error-resolver agent (auto-fix)
+2nd  build-error-resolver retry (with scope-reduction hint)
+3rd  Strip Nice-to-have → re-implement Must-have only → 1 final QA
+4th  Mark SKIP + log error details → proceed to next project
 ```
 
-GitHub push 실패 시 지수 백오프(5s → 10s → 20s)로 최대 3회 재시도합니다.
+GitHub push failures are retried up to 3 times with exponential backoff (5s → 10s → 20s).
 
 ---
 
