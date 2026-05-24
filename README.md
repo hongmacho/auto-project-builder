@@ -84,8 +84,8 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
                        ▼
         ┌──────────────────────────────────────┐
         │  Phase 3  Reports                    │
-        │  YYYYMMDD_report.html                │
-        │  overview.html       (cumulative)    │
+        │  {YYYYMMDDHHmm}_report.html          │
+        │  overview.html  (append-only)        │
         │  user-suggest.html   (cumulative)    │
         └──────────────────────────────────────┘
 ```
@@ -286,20 +286,20 @@ Can also be applied optionally to any completed project for uniform quality upli
 │   ├── {slug}_log.json
 │   └── {slug}_suggestions.json   ← enhancement guide data per project
 ├── .auto-project-builder-checkpoint.json  ← exists during run, deleted on completion
-├── YYYYMMDD_report.html           ← per-run report (in Korean)
-├── overview.html                  ← cumulative catalog, updated every run
+├── {YYYYMMDDHHmm}_report.html     ← per-run report, timestamped to minute (e.g. 202605242157_report.html)
+├── overview.html                  ← cumulative catalog, append-only across all runs
 └── user-suggest.html              ← cumulative enhancement guide, updated every run
 ```
 
-### `YYYYMMDD_report.html`
-A new dated report is created for every run. Includes:
+### `{YYYYMMDDHHmm}_report.html`
+A new timestamped report is created for every run (hour + minute included, e.g. `202605242157_report.html`). Multiple runs on the same day each get their own file — no overwriting. Includes:
 - Run summary dashboard (trend research results, QA stats)
 - Idea scoring distribution + rejection reasons
 - Per-project cards (competitive analysis, QA attempts, errors fixed)
 - Full retrospective
 
 ### `overview.html`
-Updated cumulatively across all runs. Includes:
+**Append-only** — existing content is never replaced. Each run injects new project cards and a history entry into well-known HTML markers (`<!-- PROJECT_CARDS_START/END -->`, `<!-- TIMELINE_START/END -->`, `<!-- STATS_TOTAL -->`, `<!-- STATS_AVG_SCORE -->`). Statistics are recalculated as a running total. Created fresh if it doesn't exist yet. Includes:
 - Run history timeline (links to each report)
 - Full project catalog with platform / type / score filters
 - Statistics dashboard (total projects, stack distribution, average QA attempts, average idea score)
