@@ -11,7 +11,7 @@
 > **Finish working projects with zero human intervention.**
 > A project with build errors, type errors, or lint errors is not "done."
 
-A Claude Code skill that runs a fully autonomous pipeline: interactive setup → trend research → idea scoring → competitive analysis → GitHub dedup → build → auto QA loop → README generation → GitHub push → report.
+A Claude Code skill that runs a fully autonomous pipeline: interactive setup → trend research → idea scoring → competitive analysis → GitHub dedup → build → auto QA loop → README generation → GitHub push → report → enhancement guide.
 
 [한국어 문서 →](README_ko.md)
 
@@ -30,7 +30,9 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
                            │
         ▼
 ┌─────────────────────────────────────────────────────────┐
-│  Phase -1  Checkpoint check + Interactive setup (×4)    │
+│  Phase -1  Checkpoint check + Interactive setup (up to 5)│
+│  Q1 Platform → Q1.5 Have an idea? → Q2 Tech Stack       │
+│  → Q3 Service Type* → Q4 Count*  (* skipped if Q1.5=yes)│
 └──────────────────────────┬──────────────────────────────┘
                            │
         ┌──────────────────┴──────────────────┐
@@ -43,17 +45,20 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
 └───────┬───────┘                   └────────┬─────────┘
         └──────────────┬────────────────────┘
                        ▼
-        ┌──────────────────────────────┐
-        │  Phase 1  Idea Generation    │
-        │  + Competitive Analysis      │
-        │  (Exa search per idea)       │
-        └──────────────┬───────────────┘
+        ┌──────────────────────────────────────────────────┐
+        │  Phase 1  Idea Generation                        │
+        │  + Competitive Analysis (Exa search per idea)    │
+        │  · Auto path: generate from trends + categories  │
+        │  · User-idea path: use provided idea directly    │
+        │  · TECH_STACK=none → pick per-idea at this phase │
+        └──────────────┬───────────────────────────────────┘
                        ▼
         ┌──────────────────────────────┐
         │  Phase 1.3  Idea Scoring     │
         │  Market · Originality ·      │
         │  Feasibility  /9 pts         │
         │  → auto-reroll if below 5    │
+        │  (skipped for user's idea)   │
         └──────────────┬───────────────┘
                        ▼
         ┌──────────────────────────────┐
@@ -73,13 +78,16 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
         │  2-6  GitHub push                                │
         │  2-7  macOS completion notification              │
         │  2-8  Save checkpoint                            │
+        │  2-9  Generate enhancement guide (5 categories) │
+        │  2-10 Update user-suggest.html                  │
         └──────────────┬───────────────────────────────────┘
                        ▼
-        ┌──────────────────────────────┐
-        │  Phase 3  Reports            │
-        │  YYYYMMDD_report.html        │
-        │  overview.html  (cumulative) │
-        └──────────────────────────────┘
+        ┌──────────────────────────────────────┐
+        │  Phase 3  Reports                    │
+        │  YYYYMMDD_report.html                │
+        │  overview.html       (cumulative)    │
+        │  user-suggest.html   (cumulative)    │
+        └──────────────────────────────────────┘
 ```
 
 ---
@@ -102,16 +110,19 @@ Restart Claude Code — the skill will appear in `/skills`.
 /auto-project-builder
 ```
 
-The skill asks 4 questions at startup, then runs fully autonomously.
+The skill asks up to 5 questions at startup, then runs fully autonomously.
 
 | # | Question | Options |
 |---|----------|---------|
 | 1 | Platform | Web / Mobile App / CLI / **Auto** / Custom |
-| 2 | Tech Stack | Auto-generated per platform + **Auto** (Claude picks per idea) / Custom |
-| 3 | Service Type | Productivity / Content / Commerce / Education / … (multi-select) + **Auto** |
-| 4 | Count | 1–10 / **Auto** (= `floor(categories × 2–3)`, max 10) |
+| 1.5 | Have an idea? | **Auto** (Claude generates from trends) / Direct input |
+| 2 | Preferred Tech Stack | Platform-specific options + **None** (per-idea auto-pick) / Custom |
+| 3 | Service Type _\*_ | Productivity / Content / Commerce / Education / … (multi-select) + **Auto** |
+| 4 | Count _\*_ | 1–10 / **Auto** (= `floor(categories × 2–3)`, max 10) |
 
-Selecting **Auto** on any question lets Claude choose autonomously based on trend data and service categories. The chosen value and the reasoning behind it are always announced before proceeding.
+_\* Questions 3 and 4 are skipped automatically when you provide your own idea at Q1.5 — `PROJECT_COUNT` is set to 1._
+
+Selecting **Auto** / **None** on any question lets Claude decide autonomously based on trend data. The chosen value and reasoning are always announced before proceeding.
 
 ---
 
@@ -158,6 +169,22 @@ After each QA pass, a `README.md` is generated for the project containing: featu
 
 ### Completion Notifications
 A macOS notification is fired after each project completes so you can step away during long runs.
+
+### Per-Idea Tech Stack
+When **None** is selected for the tech stack question, no stack is locked at setup time. Instead, each idea receives its own optimal stack at Phase 1 planning time based on the idea's requirements and current trends. This allows a single run to produce projects in Next.js, SvelteKit, and Remix simultaneously without being constrained to one stack up front.
+
+### Enhancement Guide (`user-suggest.html`)
+After each project completes, the skill generates a five-category enhancement guide and appends it to `user-suggest.html` — a cumulative file that persists across all runs.
+
+| Category | Contents |
+|----------|----------|
+| Quick Wins | Small improvements deployable within a day |
+| Feature Enhancements | Mid-size features to add in the next sprint |
+| Tech Improvements | Performance, security, and architecture upgrades |
+| Growth Strategies | User acquisition, SEO, viral loops, partnerships |
+| Monetization Ideas | Revenue models suited to the project type |
+
+Raw suggestion data is also saved to `report_data/{slug}_suggestions.json` for programmatic use.
 
 ---
 
@@ -256,10 +283,12 @@ Can also be applied optionally to any completed project for uniform quality upli
 │       ├── README.md              ← auto-generated
 │       └── ... (source code)
 ├── report_data/
-│   └── {slug}_log.json
+│   ├── {slug}_log.json
+│   └── {slug}_suggestions.json   ← enhancement guide data per project
 ├── .auto-project-builder-checkpoint.json  ← exists during run, deleted on completion
 ├── YYYYMMDD_report.html           ← per-run report (in Korean)
-└── overview.html                  ← cumulative catalog, updated every run
+├── overview.html                  ← cumulative catalog, updated every run
+└── user-suggest.html              ← cumulative enhancement guide, updated every run
 ```
 
 ### `YYYYMMDD_report.html`
@@ -274,6 +303,12 @@ Updated cumulatively across all runs. Includes:
 - Run history timeline (links to each report)
 - Full project catalog with platform / type / score filters
 - Statistics dashboard (total projects, stack distribution, average QA attempts, average idea score)
+
+### `user-suggest.html`
+Updated after each project completes. Includes a card per project with:
+- Quick wins, feature enhancements, tech improvements, growth strategies, monetization ideas
+- Priority and estimated effort labels per suggestion
+- Filterable by project, category, and priority
 
 ---
 
