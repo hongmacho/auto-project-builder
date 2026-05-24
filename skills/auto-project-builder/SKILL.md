@@ -17,6 +17,28 @@ triggers:
 
 ---
 
+## Phase -0.5: OMC/ECC 환경 감지
+
+이 단계는 **모든 Phase보다 먼저** 자동으로 실행된다. 사용자에게는 별도로 고지하지 않는다.
+
+### 감지 로직
+
+현재 세션에서 사용 가능한 스킬 목록을 확인한다:
+
+```
+if "oh-my-claudecode:" in available_skills:
+  OMC_MODE = "omc"
+elif "everything-claude-code:" in available_skills:
+  OMC_MODE = "ecc"
+else:
+  OMC_MODE = "none"
+```
+
+`OMC_MODE` 값에 따라 이후 모든 Phase에서 **Agent 위임 전략**이 달라진다.
+`OMC_MODE = "omc"` 일 때 가장 풍부한 스킬 조합을 활용한다.
+
+---
+
 ## Phase -1: 체크포인트 확인 + 인터랙티브 설정
 
 ### 0단계 — 이전 실행 체크포인트 확인
@@ -217,7 +239,17 @@ mcp__context7__resolve-library-id("inquirer")
 
 ### 0-B. 트렌드 조사 (병렬 레인 2)
 
-WebSearch 또는 Exa로 현재 시장 트렌드를 조사한다.
+**OMC_MODE == "omc"** 일 때 — autoresearch 스킬로 심층 조사:
+
+```
+Skill("oh-my-claudecode:autoresearch",
+  prompt="{SERVICE_CATEGORIES} 카테고리의 2025-2026 시장 트렌드 조사.
+          포함: Product Hunt 인기 서비스, GitHub Trending 저장소,
+          시장 갭(아직 해결 안 된 문제), 경쟁 밀도(high/medium/low).
+          플랫폼: {PLATFORM}")
+```
+
+그 외 모드에서는 WebSearch 또는 Exa로 직접 조사:
 
 ```
 # Product Hunt 최근 인기 서비스
@@ -248,6 +280,7 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 
 | 변수명 | 초기화 위치 | 타입/범위 |
 |--------|------------|-----------|
+| `OMC_MODE` | Phase -0.5 | string: "omc" / "ecc" / "none" |
 | `PLATFORM` | Phase -1 Q1 | string: 웹/앱/CLI/auto/자유 |
 | `TECH_STACK` | Phase -1 Q2 | string: 선택 스택 명칭 또는 "auto" |
 | `SERVICE_CATEGORIES[]` | Phase -1 Q3 | string[]; "auto" 이면 트렌드 기반 자율 결정 |
@@ -268,6 +301,14 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 ---
 
 ## Phase 1: 아이디어 생성 (경쟁 분석 포함)
+
+**OMC_MODE = "omc"** 일 때 — `team` 스킬로 planner · architect · autoresearch를 **병렬 실행**한다:
+```
+Skill("oh-my-claudecode:team", prompt="[ROLE: planner] 아이디어 기획 / [ROLE: architect] 기술 적합성 / [ROLE: autoresearch] 경쟁 분석")
+```
+→ 세 역할의 결과를 통합하여 IDEAS[] 확정. 자세한 프롬프트는 Agent 위임 전략 섹션 참조.
+
+그 외 모드에서는 아래 알고리즘대로 직접 생성:
 
 `PROJECT_COUNT`개의 서비스 아이디어를 `SERVICE_CATEGORIES`, `PLATFORM`, `TREND_DATA`를 반영하여 자율 생성.
 
@@ -360,6 +401,36 @@ gh repo list --limit 200 --json name,description,url
 
 `APPROVED_IDEAS[]`를 순회하며 각 프로젝트를 `TECH_STACK` 기준으로 구현.
 
+### ultrawork 자율 오케스트레이션 옵션 (OMC_MODE = "omc")
+
+**Phase 2 전체를 `ultrawork`에게 위임**하면 사람 개입 없이 완전 자율 실행이 가능하다.
+ultrawork는 내부적으로 PRD·ROADMAP·구현·QA·README·Push를 스스로 조율한다.
+
+```
+Skill("oh-my-claudecode:ultrawork",
+  prompt="아래 조건으로 {PROJECT_COUNT}개 프로젝트를 처음부터 끝까지 완성하라.
+
+  완료 기준:
+  - tsc/lint/build 오류 없음
+  - 80%+ 테스트 커버리지
+  - README.md 생성
+  - GitHub push 완료
+
+  프로젝트 목록: {APPROVED_IDEAS}
+  플랫폼: {PLATFORM}  스택: {TECH_STACK}
+  작업 디렉토리: projects/
+
+  각 프로젝트 완료 시 체크포인트 저장:
+  .auto-project-builder-checkpoint.json
+
+  단계 순서: PRD → ROADMAP → 구현 → QA 루프(최대 3회) → README → GitHub push
+  QA 실패 3회 시 스코프 축소 후 재시도, 그래도 실패 시 SKIP 마킹 후 다음 진행.")
+```
+
+ultrawork를 사용하지 않는 경우(기본값)에는 아래 단계별 루프로 직접 진행.
+
+---
+
 루프 시작 시 체크포인트에서 이미 완료된 프로젝트는 건너뛴다:
 ```
 if slug in CHECKPOINT.completed_projects: SKIP → 다음 아이디어
@@ -369,7 +440,17 @@ if slug in CHECKPOINT.completed_projects: SKIP → 다음 아이디어
 
 ### 2-1. PRD 작성 (`projects/{slug}/docs/PRD.md`)
 
-포함 내용:
+**OMC_MODE == "omc"** 일 때:
+```
+Agent(oh-my-claudecode:planner,
+  prompt="다음 아이디어의 PRD를 작성하라: {IDEA}.
+          플랫폼: {PLATFORM}, 스택: {TECH_STACK}.
+          포함: 타겟 사용자 페르소나, MoSCoW 기능 목록,
+          경쟁 서비스 분석 + 차별점, 데이터 모델 초안, 비기능 요구사항.
+          출력 경로: projects/{slug}/docs/PRD.md")
+```
+
+그 외 모드에서는 직접 작성. 포함 내용:
 - 서비스 개요 및 목적
 - 타겟 사용자 페르소나
 - 핵심 기능 (MoSCoW 우선순위)
@@ -382,7 +463,16 @@ if slug in CHECKPOINT.completed_projects: SKIP → 다음 아이디어
 
 ### 2-2. ROADMAP 작성 (`projects/{slug}/docs/ROADMAP.md`)
 
-`TECH_STACK`에 맞는 Sprint 계획:
+**OMC_MODE == "omc"** 일 때:
+```
+Agent(oh-my-claudecode:architect,
+  prompt="PRD(projects/{slug}/docs/PRD.md) 기반 기술 아키텍처 설계.
+          스택: {TECH_STACK}.
+          포함: Sprint 계획, DB 스키마, 컴포넌트 구조도, 기술 결정 근거.
+          출력 경로: projects/{slug}/docs/ROADMAP.md")
+```
+
+그 외 모드에서는 직접 작성. `TECH_STACK`에 맞는 Sprint 계획:
 
 **웹 (Next.js):**
 - Sprint 0: 프로젝트 셋업 (Next.js 초기화, 의존성 설치)
@@ -414,6 +504,37 @@ if slug in CHECKPOINT.completed_projects: SKIP → 다음 아이디어
 ---
 
 ### 2-3. 구현
+
+**OMC_MODE == "omc"** 일 때 — 아래 순서로 에이전트 위임:
+
+```
+# 1. UI 있는 플랫폼(웹/앱): designer가 먼저 UI 가이드 작성
+if PLATFORM in ["웹", "앱"]:
+  Agent(oh-my-claudecode:designer,
+    prompt="PRD + ROADMAP 기반 UI/UX 설계.
+            컴포넌트 목록, 색상 팔레트, 레이아웃 초안 제공.
+            스택: {TECH_STACK}")
+
+# 2. executor가 Sprint 순서대로 구현
+Agent(oh-my-claudecode:executor,
+  prompt="ROADMAP의 Sprint 순서대로 {slug} 구현.
+          스택: {TECH_STACK}.
+          immutable 패턴, Repository 패턴, 명시적 에러 처리 준수.
+          완료 기준: 컴파일·린트·빌드 오류 없음, 80%+ 테스트 커버리지.")
+
+# 3. 코드 리뷰 (구현 직후)
+Agent(oh-my-claudecode:code-reviewer,
+  prompt="projects/{slug}/ 코드 리뷰.
+          CRITICAL/HIGH 이슈 발견 시 직접 수정. 수정 파일 목록 보고.")
+
+# 4. 보안 검토 — 인증/외부 API/사용자 입력 처리가 있는 경우
+if PRD includes "auth" OR "user input" OR "external API":
+  Agent(oh-my-claudecode:security-reviewer,
+    prompt="projects/{slug}/ OWASP Top 10 기준 보안 취약점 검토.
+            CRITICAL 이슈 즉시 수정.")
+```
+
+**OMC_MODE != "omc"** 일 때 — 직접 구현:
 
 Sprint 완료 체크리스트:
 ```
@@ -471,14 +592,28 @@ while QA_ATTEMPTS < MAX_QA_ATTEMPTS:
   errors = parse_errors(result.stderr)
 
   if QA_ATTEMPTS <= 2:
-    → build-error-resolver 에이전트에 위임
-      Task(build-error-resolver, errors, context=프로젝트_소스코드)
+    # OMC_MODE에 따라 오류 수정 에이전트 선택
+    if OMC_MODE == "omc":
+      → Agent(oh-my-claudecode:debugger,
+           prompt="다음 빌드 오류를 근본 원인부터 분석하고 수정하라:
+                   {errors}
+                   프로젝트: projects/{slug}/  스택: {TECH_STACK}")
+    elif OMC_MODE == "ecc":
+      → Agent(everything-claude-code:build-error-resolver, errors, context=프로젝트_소스코드)
+    else:
+      → Task(build-error-resolver, errors, context=프로젝트_소스코드)
     → 수정 후 재시도
 
   if QA_ATTEMPTS == 3 and not result.success:
     → 스코프 축소: Nice-to-have 기능 제거, Must-have만 남기고 재구현
     → 최종 QA 1회 더 실행
     → 그래도 실패 시 SKIP 마킹 + report_data에 오류 기록
+
+# QA 통과 후 — OMC_MODE == "omc" 이면 verifier로 기능 동작 최종 확인
+if QA passed and OMC_MODE == "omc":
+  Agent(oh-my-claudecode:verifier,
+    prompt="projects/{slug}/ 핵심 기능이 실제로 동작하는지 검증.
+            PRD Must-have 기능 체크리스트 기준. 실패 항목은 재현 방법과 함께 보고.")
 ```
 
 QA 결과 출력:
@@ -494,7 +629,19 @@ QA 결과 출력:
 
 ### 2-5. README 자동 생성 (`projects/{slug}/README.md`)
 
-QA 통과 후 즉시 생성. 포함 내용:
+QA 통과 후 즉시 생성.
+
+**OMC_MODE == "omc"** 일 때:
+```
+Agent(oh-my-claudecode:writer,
+  prompt="projects/{slug}/ README.md 작성.
+          PRD + 실제 구현 내용 기반. 영문, 간결하고 기술적인 톤.
+          포함: 서비스 소개, 기능 목록, 기술 스택 표, 설치/실행 방법.")
+```
+
+그 외 모드에서는 아래 템플릿을 직접 생성.
+
+포함 내용:
 
 ```markdown
 # {서비스명} — {한국어 이름}
@@ -538,6 +685,17 @@ MIT
 ---
 
 ### 2-6. GitHub 저장소 생성 및 Push
+
+**OMC_MODE == "omc"** 일 때:
+```
+Agent(oh-my-claudecode:git-master,
+  prompt="projects/{slug}/ 을 새 GitHub 저장소 {slug}에 push.
+          커밋 메시지: 'feat: initial implementation of {서비스명}'.
+          저장소 설명: '{서비스 한 줄 설명}'.
+          public 저장소. push 성공 후 URL 반환.")
+```
+
+그 외 모드에서는 아래 명령을 직접 실행:
 
 ```bash
 gh repo create {slug} --public --description "{서비스 설명}"
@@ -705,6 +863,12 @@ rm .auto-project-builder-checkpoint.json
 
 ## Agent 위임 전략
 
+`OMC_MODE` 값에 따라 아래 전략 중 하나를 선택한다.
+
+---
+
+### OMC_MODE = "none" (기본 내장 에이전트)
+
 ```
 # PRD + 환경 설정 병렬
 Task(executor/sonnet, "PRD 작성") || Task(executor/haiku, "프로젝트 초기화")
@@ -717,6 +881,246 @@ Task(build-error-resolver/sonnet, "빌드 오류 수정", errors=QA_ERRORS)
 
 # 복잡한 아키텍처
 Task(architect/opus, "DB 스키마 설계 검토")
+```
+
+---
+
+### OMC_MODE = "omc" (oh-my-claudecode 최적화)
+
+OMC가 감지되면 아래 스킬 조합을 사용한다. 각 스킬은 `Skill` 도구로 호출하거나 서브에이전트로 위임한다.
+
+#### Phase 0-B: 트렌드 조사
+
+```
+# 시장 조사 + 심층 리서치 병렬
+Skill("oh-my-claudecode:autoresearch",
+  prompt="SERVICE_CATEGORIES 관련 2025-2026 트렌드, 시장 갭, 인기 기능 조사")
+```
+
+#### Phase 1: 아이디어 기획 — team으로 병렬 멀티에이전트 실행
+
+`team` 스킬로 planner · architect · autoresearch를 **동시에** 실행한다.
+단일 에이전트 순차 실행 대비 기획 시간을 대폭 단축하고 관점을 다양화한다.
+
+```
+Skill("oh-my-claudecode:team",
+  prompt="아이디어 기획 팀 구성. 아래 3개 역할을 병렬로 실행하라.
+
+  [ROLE: planner]
+  TREND_DATA 기반으로 {PROJECT_COUNT}개 아이디어 기획.
+  각 아이디어에 타겟 사용자, 핵심 기능 3개, 차별점 포함.
+  플랫폼: {PLATFORM}, 카테고리: {SERVICE_CATEGORIES}
+
+  [ROLE: architect]
+  planner 결과를 받아 아이디어별 {TECH_STACK} 기술 적합성 평가.
+  구현 가능성(feasibility) 점수 산정 근거와 리스크 제공.
+
+  [ROLE: autoresearch]
+  {SERVICE_CATEGORIES} 각 카테고리의 경쟁 서비스 3개씩 조사.
+  시장 갭과 차별화 기회를 planner 결과에 보강.")
+
+# team 결과를 통합하여 IDEAS[] 최종 확정
+→ planner 아이디어 + architect 적합성 점수 + autoresearch 시장 분석 병합
+→ Phase 1.3 아이디어 평가로 진행
+```
+
+#### Phase 2 전체: ultrawork 자율 오케스트레이션 (선택 옵션)
+
+team 기획 결과를 바탕으로 **Phase 2 전체를 사람 개입 없이 완전 자율 실행**하고 싶을 때 사용한다.
+ultrawork는 내부적으로 PRD·ROADMAP·구현·QA·README·Push를 스스로 조율하므로, Phase 2-1 ~ 2-6 루프를 수동으로 진행할 필요가 없다.
+
+```
+Skill("oh-my-claudecode:ultrawork",
+  prompt="{PROJECT_COUNT}개 프로젝트를 아래 사양으로 처음부터 끝까지 완성하라.
+
+  프로젝트 목록 (각 항목: slug | 서비스명 | 한 줄 설명):
+  {APPROVED_IDEAS}
+
+  공통 사양:
+  - PLATFORM: {PLATFORM}
+  - TECH_STACK: {TECH_STACK}
+  - PRD 출력 경로: projects/{slug}/docs/PRD.md
+  - ROADMAP 출력 경로: projects/{slug}/docs/ROADMAP.md
+
+  완료 기준 (모든 항목 충족 필수):
+  1. tsc --noEmit / lint / build 오류 0개
+  2. 테스트 커버리지 80% 이상
+  3. README.md 생성 완료
+  4. GitHub 저장소 push 완료 (URL 반환)
+  5. PRD Must-have 기능 전부 동작 확인
+
+  단계 순서: PRD → ROADMAP → 구현 → QA → README → Push
+  각 프로젝트는 독립적으로 병렬 실행 가능하면 병렬로 처리하라.")
+```
+
+ultrawork를 사용하지 않는 경우(기본값)에는 아래 Phase 2-1 ~ 2-6 단계별 루프로 직접 진행.
+
+---
+
+#### Phase 2-1: PRD 작성
+
+```
+Agent(oh-my-claudecode:planner,
+  prompt="다음 아이디어의 PRD를 작성하라: {IDEA}.
+          플랫폼: {PLATFORM}, 스택: {TECH_STACK}.
+          포함: 페르소나, MoSCoW 기능 목록, 데이터 모델 초안, 비기능 요구사항.
+          출력 경로: projects/{slug}/docs/PRD.md")
+```
+
+#### Phase 2-2: ROADMAP + 아키텍처 설계
+
+```
+Agent(oh-my-claudecode:architect,
+  prompt="PRD(projects/{slug}/docs/PRD.md) 기반으로 기술 아키텍처 설계.
+          스택: {TECH_STACK}.
+          Sprint 계획, DB 스키마, 컴포넌트 구조도 포함.
+          출력 경로: projects/{slug}/docs/ROADMAP.md")
+```
+
+#### Phase 2-3: 구현
+
+```
+# 웹/앱 — UI 있는 플랫폼: designer가 먼저 UI 가이드 작성
+if PLATFORM in ["웹", "앱"]:
+  Agent(oh-my-claudecode:designer,
+    prompt="PRD + ROADMAP 기반 UI/UX 설계.
+            컴포넌트 목록, 색상 팔레트, 레이아웃 초안 제공.
+            스택: {TECH_STACK}")
+
+# 구현 — executor가 실제 코드 작성
+Agent(oh-my-claudecode:executor,
+  prompt="ROADMAP의 Sprint 순서대로 {slug} 구현.
+          스택: {TECH_STACK}.
+          immutable 패턴, Repository 패턴, 명시적 에러 처리 준수.
+          완료 기준: tsc/lint/build 오류 없음.")
+
+# 구현 직후 코드 리뷰 (병렬 가능)
+Agent(oh-my-claudecode:code-reviewer,
+  prompt="projects/{slug}/ 코드 리뷰.
+          CRITICAL/HIGH 이슈만 보고. 수정 사항 직접 적용.")
+
+# 보안 검토 — 인증·외부 API·사용자 입력 처리 코드가 있는 경우
+if PRD includes "auth" OR "user input" OR "external API":
+  Agent(oh-my-claudecode:security-reviewer,
+    prompt="projects/{slug}/ 보안 취약점 검토 (OWASP Top 10 기준).
+            CRITICAL 이슈 발견 시 즉시 수정.")
+```
+
+#### Phase 2-4: QA 루프
+
+```
+QA_ATTEMPTS = 0
+MAX_QA_ATTEMPTS = 3
+
+while QA_ATTEMPTS < MAX_QA_ATTEMPTS:
+  result = run_qa_commands()
+  if result.success: break
+
+  QA_ATTEMPTS += 1
+
+  if QA_ATTEMPTS <= 2:
+    # debugger — 근본 원인 분석 + 수정
+    Agent(oh-my-claudecode:debugger,
+      prompt="다음 빌드 오류를 근본 원인부터 분석하고 수정하라:
+              {QA_ERRORS}
+              프로젝트: projects/{slug}/
+              스택: {TECH_STACK}
+              수정 후 QA 명령 재실행 결과도 보고.")
+
+  if QA_ATTEMPTS == 3 and not result.success:
+    # 스코프 축소 후 최종 시도
+    → Nice-to-have 기능 제거 후 executor로 재구현
+    → QA 1회 더 실행
+
+# QA 통과 후 — verifier로 기능 동작 최종 확인
+Agent(oh-my-claudecode:verifier,
+  prompt="projects/{slug}/ 핵심 기능이 실제로 동작하는지 검증.
+          PRD의 Must-have 기능 체크리스트 기준.
+          실패 항목 있으면 구체적 재현 방법과 함께 보고.")
+```
+
+#### Phase 2-5: README + 문서 생성
+
+```
+Agent(oh-my-claudecode:writer,
+  prompt="projects/{slug}/ README.md 작성.
+          PRD + 실제 구현 내용 기반.
+          포함: 서비스 소개, 기능 목록, 기술 스택 표, 설치/실행 방법.
+          언어: 영문, 톤: 간결하고 기술적.")
+```
+
+#### Phase 2-6: GitHub Push
+
+```
+Agent(oh-my-claudecode:git-master,
+  prompt="projects/{slug}/ 을 새 GitHub 저장소 {slug}에 push.
+          커밋 메시지: 'feat: initial implementation of {서비스명}'.
+          저장소 설명: '{서비스 한 줄 설명}'.
+          push 후 URL 반환.")
+```
+
+#### 품질 반복 개선 — ralph 루프
+
+ralph는 PRD 기반의 검증 루프를 돌려 **모든 acceptance criteria가 통과할 때까지** 자동으로 반복한다.
+
+**자동 적용 조건** (아래 중 하나 이상):
+- `QA_ATTEMPTS >= 2` (빌드 오류가 많았던 프로젝트)
+- `IDEA_SCORE.total <= 6` (저점 아이디어)
+- 코드 리뷰에서 HIGH 이상 이슈가 3개 이상 발견된 경우
+
+**선택적 적용**: 모든 완료 프로젝트에 ralph를 돌려 전체 품질을 균일하게 높일 수 있다.
+
+```
+Skill("oh-my-claudecode:ralph",
+  prompt="projects/{slug}/ 의 품질을 아래 acceptance criteria 기준으로 완성하라.
+
+  Acceptance Criteria:
+  1. 테스트 커버리지 80% 이상 (jest/pytest/go test 기준)
+  2. tsc --noEmit / lint / build 오류 0개
+  3. 모든 에러 경계에서 명시적 에러 처리 존재
+  4. 함수/컴포넌트 200줄 이하 준수
+  5. PRD Must-have 기능 전부 동작 확인
+
+  작업 우선순위:
+  1. 누락된 테스트 추가 (커버리지 목표 달성)
+  2. 에러 처리 보완 (silent failure 제거)
+  3. 코드 가독성 개선 (함수 분리, 네이밍)
+  4. 빌드/타입 오류 수정
+
+  제약: 기존 기능 동작 유지. 스코프 확장 금지.")
+```
+
+ralph는 위 criteria가 모두 통과할 때까지 자동으로 반복 실행한다. 통과 후 자동 종료.
+
+---
+
+### OMC_MODE = "ecc" (everything-claude-code 최적화)
+
+`oh-my-claudecode`는 없고 `everything-claude-code` 스킬만 있을 때 사용.
+
+```
+# 기획
+Agent(everything-claude-code:planner, "아이디어 기획 + PRD 초안")
+Agent(everything-claude-code:architect, "기술 아키텍처 + ROADMAP")
+
+# 트렌드 조사
+Agent(everything-claude-code:market-research, "SERVICE_CATEGORIES 시장 조사")
+
+# 구현
+Agent(everything-claude-code:feature-dev, "핵심 기능 구현 (TDD 포함)")
+
+# 리뷰
+Agent(everything-claude-code:code-review, "코드 품질 검토")
+Agent(everything-claude-code:security-review, "보안 취약점 검토")
+
+# 문서
+Agent(everything-claude-code:docs, "README + 기술 문서 생성")
+
+# QA
+Agent(everything-claude-code:verify, "기능 검증")
+
+# 스택별 빌드 오류
+Agent(everything-claude-code:build-error-resolver, errors=QA_ERRORS)
 ```
 
 ---

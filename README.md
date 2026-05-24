@@ -24,6 +24,12 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
         │
         ▼
 ┌─────────────────────────────────────────────────────────┐
+│  Phase -0.5  OMC / ECC Environment Detection (silent)   │
+│  → OMC_MODE = "omc" / "ecc" / "none"                    │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+        ▼
+┌─────────────────────────────────────────────────────────┐
 │  Phase -1  Checkpoint check + Interactive setup (×4)    │
 └──────────────────────────┬──────────────────────────────┘
                            │
@@ -152,6 +158,59 @@ After each QA pass, a `README.md` is generated for the project containing: featu
 
 ### Completion Notifications
 A macOS notification is fired after each project completes so you can step away during long runs.
+
+---
+
+## OMC Integration (oh-my-claudecode)
+
+When running inside [oh-my-claudecode](https://github.com/oh-my-claudecode), the skill automatically detects the environment at startup (Phase -0.5) and upgrades each phase with specialized agent orchestration.
+
+### Auto-Detection
+
+| Detected | `OMC_MODE` | Agent Strategy |
+|----------|-----------|----------------|
+| `oh-my-claudecode:*` skills | `"omc"` | Full OMC orchestration |
+| `everything-claude-code:*` skills | `"ecc"` | ECC agent suite |
+| Neither | `"none"` | Built-in agents |
+
+### Phase 1: Parallel Planning with `team`
+
+When `OMC_MODE = "omc"`, idea generation runs three roles simultaneously via the `team` skill — cutting planning time and diversifying perspectives:
+
+| Role | Responsibility |
+|------|----------------|
+| `planner` | Generate ideas with target users, core features, differentiators |
+| `architect` | Evaluate tech feasibility and implementation risks per idea |
+| `autoresearch` | Research 3 competing services per category; surface market gaps |
+
+### Phase 2: Full Autonomous Orchestration with `ultrawork`
+
+Optionally hand off all of Phase 2 (PRD → ROADMAP → implement → QA → README → push) to `ultrawork` for zero-touch execution:
+
+```
+Skill("oh-my-claudecode:ultrawork",
+  prompt="Complete {N} projects end-to-end.
+  PLATFORM / TECH_STACK / PRD path: projects/{slug}/docs/PRD.md
+  Done when: zero build errors + 80%+ coverage + README + GitHub push")
+```
+
+### Post-Build Quality Loop with `ralph`
+
+After implementation, `ralph` applies a PRD-driven acceptance-criteria loop until quality is guaranteed.
+
+**Auto-triggered when:**
+- QA failed 2+ times
+- Idea scored ≤ 6/9
+- Code review found 3+ HIGH issues
+
+**Criteria ralph enforces:**
+1. Test coverage ≥ 80%
+2. Zero `tsc / lint / build` errors
+3. Explicit error handling at every boundary
+4. Functions / components ≤ 200 lines
+5. All PRD Must-have features verified working
+
+Can also be applied optionally to any completed project for uniform quality uplift.
 
 ---
 
