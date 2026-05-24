@@ -61,8 +61,13 @@ ls .auto-project-builder-checkpoint.json 2>/dev/null
 1. 웹 (Web)          — 브라우저에서 동작하는 웹 앱
 2. 앱 (Mobile App)   — iOS / Android 모바일 앱
 3. CLI               — 터미널에서 동작하는 커맨드라인 도구
-4. 자유롭게          — 직접 설명해 주세요
+4. 알아서            — 트렌드·서비스 유형 기반으로 자율 선택
+5. 자유롭게          — 직접 설명해 주세요
 ```
+
+**"알아서" 선택 시**: Phase 0-B 트렌드 조사 결과와 SERVICE_CATEGORIES를 바탕으로
+가장 적합한 플랫폼을 자율 결정하고 이유와 함께 고지한 뒤 진행한다.
+예: `알아서 선택: 웹 — 생산성 SaaS는 브라우저 접근성이 전환율에 직결되므로`
 
 → 선택 결과를 `PLATFORM`에 저장.
 
@@ -78,38 +83,44 @@ ls .auto-project-builder-checkpoint.json 2>/dev/null
 2. Nuxt 3 · Tailwind CSS · PGlite
 3. SvelteKit · shadcn-svelte · Drizzle + SQLite
 4. Remix · shadcn/ui · Drizzle + SQLite
-5. 자유롭게 — 직접 입력해 주세요
+5. 알아서 — 아이디어에 가장 적합한 스택 자율 선택
+6. 자유롭게 — 직접 입력해 주세요
 ```
 
 **PLATFORM = 앱:**
 ```
 어떤 기술 스택을 사용할까요?
 
-1. React Native + Expo · SQLite (expo-sqlite)   (추천)
+1. React Native + Expo · SQLite (expo-sqlite)
 2. Flutter · Dart · sqflite
-3. Swift · SwiftUI (iOS 전용)
-4. Kotlin · Jetpack Compose (Android 전용)
-5. 자유롭게 — 직접 입력해 주세요
+3. 알아서 — 아이디어에 가장 적합한 스택 자율 선택
+4. 자유롭게 — 직접 입력해 주세요
 ```
 
 **PLATFORM = CLI:**
 ```
 어떤 기술 스택을 사용할까요?
 
-1. Node.js · TypeScript · Commander.js · SQLite  (추천)
+1. Node.js · TypeScript · Commander.js · SQLite
 2. Python · Typer · Click · SQLite
 3. Go · Cobra · SQLite
 4. Rust · Clap · SQLite
-5. 자유롭게 — 직접 입력해 주세요
+5. 알아서 — 아이디어에 가장 적합한 스택 자율 선택
+6. 자유롭게 — 직접 입력해 주세요
 ```
 
 **PLATFORM = 자유롭게:**
 ```
 사용하고 싶은 기술 스택을 자유롭게 설명해 주세요.
 (예: "Electron + React + SQLite", "FastAPI + HTMX + PostgreSQL" 등)
+또는 "알아서"라고 입력하면 자율 선택합니다.
 ```
 
-→ 선택/입력 결과를 `TECH_STACK`에 저장.
+**"알아서" 선택 시**: 아이디어 생성(Phase 1) 이후 각 아이디어의 특성에 맞게
+프로젝트별로 최적 스택을 독립적으로 결정하고 PRD 작성 전 이유와 함께 고지한다.
+예: `알아서 선택: Flutter — 크로스플랫폼 네이티브 UI가 이 앱의 핵심 경험에 적합하므로`
+
+→ 선택/입력 결과를 `TECH_STACK`에 저장. "알아서"이면 `TECH_STACK = "auto"`로 저장 후 Phase 2에서 아이디어별 결정.
 
 ---
 
@@ -128,8 +139,13 @@ ls .auto-project-builder-checkpoint.json 2>/dev/null
 7.  파이낸스      — 예산 관리, 투자, 가계부
 8.  개발자 도구   — 유틸리티, API 도구, 코드 분석
 9.  커뮤니티      — 소셜, 포럼, 네트워킹
-10. 자유롭게      — 직접 설명해 주세요
+10. 알아서        — 트렌드 조사 기반으로 유망 카테고리 자율 선택
+11. 자유롭게      — 직접 설명해 주세요
 ```
+
+**"알아서" 선택 시**: Phase 0-B 트렌드 조사 결과(`TREND_DATA.market_gaps`, `TREND_DATA.trending_categories`)를
+기반으로 현재 가장 유망한 카테고리를 자율 선택하고 이유와 함께 고지한 뒤 진행한다.
+예: `알아서 선택: 개발자 도구 — GitHub Trending에서 AI 코드 도구 수요가 급증 중이므로`
 
 → 선택 결과(복수 가능)를 `SERVICE_CATEGORIES[]`에 저장.
 
@@ -139,9 +155,16 @@ ls .auto-project-builder-checkpoint.json 2>/dev/null
 
 ```
 총 몇 개의 서비스를 만들까요? (기본값: 5, 최대: 10)
+
+숫자 입력, 또는:
+- 알아서 — 선택한 카테고리 수와 트렌드 밀도를 기반으로 자율 결정
 ```
 
-→ 입력값을 `PROJECT_COUNT`에 저장. 빈 입력이면 5.
+**"알아서" 선택 시**: `SERVICE_CATEGORIES` 수와 `TREND_DATA.competitive_density`를 기반으로
+적정 개수를 결정한다. 카테고리 1개당 2–3개, 최대 10개를 초과하지 않는다.
+예: `알아서 선택: 6개 — 카테고리 2개 × 3개씩`
+
+→ 입력값을 `PROJECT_COUNT`에 저장. 빈 입력이면 5. "알아서"이면 위 공식으로 계산.
 
 ---
 
@@ -225,10 +248,10 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 
 | 변수명 | 초기화 위치 | 타입/범위 |
 |--------|------------|-----------|
-| `PLATFORM` | Phase -1 Q1 | string: 웹/앱/CLI/자유 |
-| `TECH_STACK` | Phase -1 Q2 | string: 선택 스택 명칭 |
-| `SERVICE_CATEGORIES[]` | Phase -1 Q3 | string[] |
-| `PROJECT_COUNT` | Phase -1 Q4 | 정수 1–10, 기본 5 |
+| `PLATFORM` | Phase -1 Q1 | string: 웹/앱/CLI/auto/자유 |
+| `TECH_STACK` | Phase -1 Q2 | string: 선택 스택 명칭 또는 "auto" |
+| `SERVICE_CATEGORIES[]` | Phase -1 Q3 | string[]; "auto" 이면 트렌드 기반 자율 결정 |
+| `PROJECT_COUNT` | Phase -1 Q4 | 정수 1–10, 기본 5; "알아서" 이면 공식 계산 |
 | `STACK_VERSIONS` | Phase 0-A | 라이브러리 버전 맵 |
 | `TREND_DATA` | Phase 0-B | 트렌드 조사 결과 객체 |
 | `IDEAS[]` | Phase 1 | PROJECT_COUNT개 객체 배열 |

@@ -100,10 +100,12 @@ The skill asks 4 questions at startup, then runs fully autonomously.
 
 | # | Question | Options |
 |---|----------|---------|
-| 1 | Platform | Web / Mobile App / CLI / Custom |
-| 2 | Tech Stack | Auto-generated based on platform |
-| 3 | Service Type | Productivity / Content / Commerce / Education / etc. (multi-select) |
-| 4 | Count | Default 5, max 10 |
+| 1 | Platform | Web / Mobile App / CLI / **Auto** / Custom |
+| 2 | Tech Stack | Auto-generated per platform + **Auto** (Claude picks per idea) / Custom |
+| 3 | Service Type | Productivity / Content / Commerce / Education / … (multi-select) + **Auto** |
+| 4 | Count | 1–10 / **Auto** (= `floor(categories × 2–3)`, max 10) |
+
+Selecting **Auto** on any question lets Claude choose autonomously based on trend data and service categories. The chosen value and the reasoning behind it are always announced before proceeding.
 
 ---
 
@@ -169,9 +171,8 @@ A macOS notification is fired after each project completes so you can step away 
 |--------|-------|
 | ① Recommended | React Native + Expo · expo-sqlite |
 | ② | Flutter 3 · Dart · sqflite |
-| ③ | SwiftUI (iOS) · CoreData |
-| ④ | Jetpack Compose (Android) · Room |
-| ⑤ | Custom input |
+| ③ | Auto (Claude picks per idea based on trend data) |
+| ④ | Custom input |
 
 ### CLI
 | Option | Stack |
