@@ -8,15 +8,17 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003B57?style=flat-square&logo=sqlite)](https://orm.drizzle.team)
 
-A Claude Code skill that autonomously plans service ideas and builds complete Next.js + shadcn/ui + SQLite web projects — no human intervention required.
+A Claude Code skill that interactively configures platform & tech stack, then autonomously plans service ideas and builds complete projects — no human intervention required after setup.
 
 ## Features
 
-- Generates N service ideas (default: 5) autonomously
+- **Interactive setup** — choose platform (Web / Mobile App / CLI / Custom), tech stack, service type, and count
+- Generates N service ideas (default: 5) tailored to your selections
 - Checks GitHub for duplicate projects before building
-- Builds each project with Next.js 14+ App Router + shadcn/ui + Drizzle ORM + SQLite
+- Builds each project with your chosen stack (Next.js, Nuxt, SvelteKit, React Native, Flutter, and more)
 - Pushes each project to GitHub automatically
-- Produces a final HTML report in Korean
+- Produces a **date-stamped report** (`YYYYMMDD_report.html`) per run
+- Maintains a **cumulative `overview.html`** — a living catalog of all generated projects
 
 ## Installation
 
@@ -31,46 +33,58 @@ Then restart Claude Code — the skill will appear in `/skills`.
 ## Usage
 
 ```
-# Default (5 projects, autonomous domain selection)
 /auto-project-builder
-
-# Specify count
-/auto-project-builder --count 3
-
-# Specify domain keywords
-/auto-project-builder --keywords "healthcare,education"
-
-# Count + keywords
-/auto-project-builder --count 3 --keywords "saas,productivity"
-
-# Natural language also works
-"자율 프로젝트 3개 커머스 관련으로 만들어봐"
-"autonomous build 2 projects about productivity"
 ```
 
-## Prerequisites
+On start, the skill asks 4 questions:
 
-- `gh` CLI authenticated (`gh auth login`)
-- Node.js 18+
-- Git configured
-- Context7 MCP server enabled (for latest stack research)
+| # | Question | Options |
+|---|----------|---------|
+| 1 | Platform | Web / Mobile App / CLI / Custom |
+| 2 | Tech Stack | Dynamic options based on platform choice |
+| 3 | Service Type | SaaS / E-commerce / Social / Productivity / etc. |
+| 4 | Count | How many projects to build (default: 5) |
 
-## Tech Stack
+Then it runs fully autonomously.
 
-Each generated project uses:
+## Supported Tech Stacks
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 14+ App Router |
-| UI | shadcn/ui |
-| Database | SQLite via Drizzle ORM |
-| Auth | NextAuth.js v5 (optional) |
-| Language | TypeScript (strict mode) |
+### Web
+| Stack | Details |
+|-------|---------|
+| Next.js (recommended) | Next.js 14+ App Router · shadcn/ui · Drizzle + SQLite |
+| Nuxt 3 | Nuxt 3 · Tailwind CSS · PGlite |
+| SvelteKit | SvelteKit · shadcn-svelte · Drizzle + SQLite |
+| Remix | Remix · shadcn/ui · Drizzle + SQLite |
+
+### Mobile App
+| Stack | Details |
+|-------|---------|
+| React Native + Expo (recommended) | Expo SDK · NativeWind · SQLite |
+| Flutter | Flutter 3 · Material 3 · sqflite |
+| Swift (iOS) | SwiftUI · CoreData |
+| Kotlin (Android) | Jetpack Compose · Room |
+
+### CLI
+| Stack | Details |
+|-------|---------|
+| Node.js (recommended) | Node.js · Commander · chalk |
+| Python | Python 3.12 · Click · Rich |
+| Go | Go 1.22 · Cobra · Bubble Tea |
+| Rust | Rust · clap · ratatui |
 
 ## Output
 
 - `projects/{slug}/` — each generated project
-- `project_report.html` — final summary report in Korean
+- `YYYYMMDD_report.html` — per-run summary report in Korean
+- `overview.html` — cumulative catalog updated after every run
+
+## Prerequisites
+
+- `gh` CLI authenticated (`gh auth login`)
+- Node.js 18+ (for web/CLI projects)
+- Git configured
+- Context7 MCP server enabled (for latest stack research)
 
 ## License
 
