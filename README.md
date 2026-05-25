@@ -95,12 +95,14 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
 ## Installation
 
 ```bash
-mkdir -p ~/.claude/skills/auto-project-builder
-curl -o ~/.claude/skills/auto-project-builder/SKILL.md \
-  https://raw.githubusercontent.com/hongmacho/auto-project-builder/main/skills/auto-project-builder/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/hongmacho/auto-project-builder/main/install.sh | bash
 ```
 
-Restart Claude Code — the skill will appear in `/skills`.
+This installs both required skills in one command:
+- `~/.claude/skills/auto-project-builder/SKILL.md`
+- `~/.claude/skills/idea-generator/SKILL.md`
+
+Restart Claude Code — the skills will appear in `/skills`.
 
 ---
 
