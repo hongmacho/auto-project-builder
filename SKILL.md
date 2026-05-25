@@ -851,7 +851,8 @@ rm .auto-project-builder-checkpoint.json
 
 ### 2-10. 프로젝트별 고도화 제안 수집
 
-프로젝트 완료 직후 해당 프로젝트의 후속 작업과 고도화 전략을 생성하여 `user-suggest.html`에 누적한다.
+프로젝트 완료 직후 해당 프로젝트의 후속 작업과 고도화 전략을 생성하여 `projects/{slug}/user-suggest.html`에 저장한다.
+각 프로젝트마다 독립된 파일로 생성되며, 5개 프로젝트이면 5개의 개별 파일이 만들어진다.
 
 **생성 항목:**
 
@@ -923,7 +924,7 @@ Agent(oh-my-claudecode:planner,
 
 그 외 모드에서는 PRD + 구현 내용 + 경쟁 분석을 직접 분석하여 생성.
 
-생성된 데이터를 `report_data/{slug}_suggestions.json`에 저장하고, `user-suggest.html`에 즉시 반영한다.
+생성된 데이터를 `report_data/{slug}_suggestions.json`에 저장하고, `projects/{slug}/user-suggest.html`을 생성/갱신한다.
 
 ---
 
@@ -1040,59 +1041,48 @@ Agent(oh-my-claudecode:planner,
 
 ---
 
-### 3-3. user-suggest.html 갱신
+### 3-3. user-suggest.html 생성 (프로젝트별 독립 파일)
 
-`user-suggest.html`은 **프로젝트 완료마다 즉시 갱신**(Phase 2-10에서 호출)되며,
-모든 프로젝트의 후속 작업과 고도화 전략을 한눈에 볼 수 있는 실행 가이드다.
+`projects/{slug}/user-suggest.html`은 **해당 프로젝트 전용 실행 가이드**다.
+Phase 2-10에서 프로젝트 완료 직후 즉시 생성되며, 프로젝트마다 별도의 파일로 만들어진다.
+5개 프로젝트 → 5개의 독립된 `user-suggest.html` 파일.
 
 **구조**:
 
 ```html
-<!-- user-suggest.html 레이아웃 -->
-헤더: "다음 단계 가이드 — 고도화 전략 & 후속 작업"
+<!-- projects/{slug}/user-suggest.html 레이아웃 -->
+헤더: "{서비스명} — 다음 단계 가이드"
+부헤더: "[{PLATFORM} / {TECH_STACK}]  GitHub 링크 ↗  완료일: {completed_at}"
 
-[프로젝트 필터 탭]
-  전체 보기 | {서비스명1} | {서비스명2} | ...
+  ⚡ Quick Wins — 지금 바로 할 수 있는 것 (1~2주)
+    □ {quick_win_1}
+    □ {quick_win_2}
+    □ ...
 
-[프로젝트 카드 (각 프로젝트별)]
-  ┌─ {서비스명}  [{PLATFORM} / {TECH_STACK}]  GitHub 링크 ↗
-  │
-  │  ⚡ Quick Wins — 지금 바로 할 수 있는 것 (1~2주)
-  │    □ {quick_win_1}
-  │    □ {quick_win_2}
-  │    □ ...
-  │
-  │  🚀 기능 고도화 (1~3개월)
-  │    ┌ [우선순위: high] {기능명} — {설명} / 난이도: {effort}
-  │    ├ [우선순위: medium] ...
-  │    └ ...
-  │
-  │  🔧 기술 개선 사항
-  │    • {tech_improvement_1}
-  │    • {tech_improvement_2}
-  │    • ...
-  │
-  │  📈 성장 전략 (3~6개월)
-  │    ┌ {전략명}: {설명}
-  │    │  → 예상 효과: {expected_impact}
-  │    └ ...
-  │
-  │  💰 수익화 아이디어
-  │    • {monetization_idea_1}
-  │    • ...
-  └─
+  🚀 기능 고도화 (1~3개월)
+    ┌ [우선순위: high] {기능명} — {설명} / 난이도: {effort}
+    ├ [우선순위: medium] ...
+    └ ...
 
-[전체 우선순위 통합 뷰]
-  모든 프로젝트의 high 우선순위 항목만 모아서 표시
-  (어떤 프로젝트부터 고도화할지 한눈에 비교 가능)
+  🔧 기술 개선 사항
+    • {tech_improvement_1}
+    • {tech_improvement_2}
+    • ...
+
+  📈 성장 전략 (3~6개월)
+    ┌ {전략명}: {설명}
+    │  → 예상 효과: {expected_impact}
+    └ ...
+
+  💰 수익화 아이디어
+    • {monetization_idea_1}
+    • ...
 ```
 
-**업데이트 알고리즘**:
-1. `user-suggest.html` 파일 읽기 (없으면 빈 템플릿 생성)
-2. `report_data/{slug}_suggestions.json` 읽기
-3. HTML 내 `<!-- SUGGESTIONS_INJECT_{slug} -->` 마커 위치에 해당 프로젝트 카드 삽입 (없으면 추가)
-4. 이미 카드가 있으면 내용 교체
-5. 전체 우선순위 통합 뷰 재계산
+**생성 방법**:
+1. `report_data/{slug}_suggestions.json` 읽기
+2. 위 구조의 HTML을 새로 생성하여 `projects/{slug}/user-suggest.html`로 저장
+3. 기존 파일이 있으면 덮어쓴다
 
 **스타일**: 현대적 HTML+CSS (Tailwind CDN), 다크/라이트 모드 지원, 체크박스 인터랙션(JS), 인쇄 가능.
 
@@ -1380,14 +1370,14 @@ GitHub push 실패 시 최대 3회 재시도 (지수 백오프 5s→10s→20s).
 │       │   ├── PRD.md
 │       │   └── ROADMAP.md
 │       ├── README.md                ← 자동 생성
+│       ├── user-suggest.html        ← 해당 프로젝트 전용 후속 작업 & 고도화 전략 가이드
 │       └── ... (소스 코드)
 ├── report_data/
 │   ├── {slug}_log.json              ← 프로젝트별 빌드 로그
 │   └── {slug}_suggestions.json     ← 프로젝트별 고도화 제안 원본
 ├── .auto-project-builder-checkpoint.json  ← 실행 중 존재, 완료 시 삭제
 ├── {YYYYMMDDHHmm}_report.html       ← 이번 실행 보고서 (시분 포함으로 같은 날 여러 번 실행해도 덮어쓰지 않음)
-├── overview.html                    ← 전체 누적 현황
-└── user-suggest.html                ← 프로젝트별 후속 작업 & 고도화 전략 가이드 (프로젝트 완료마다 갱신)
+└── overview.html                    ← 전체 누적 현황
 ```
 
 ---

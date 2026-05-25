@@ -86,7 +86,6 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
         │  Phase 3  Reports                    │
         │  {YYYYMMDDHHmm}_report.html          │
         │  overview.html  (append-only)        │
-        │  user-suggest.html   (cumulative)    │
         └──────────────────────────────────────┘
 ```
 
@@ -187,7 +186,7 @@ A macOS notification is fired after each project completes so you can step away 
 When **None** is selected for the tech stack question, no stack is locked at setup time. Instead, each idea receives its own optimal stack at Phase 1 planning time based on the idea's requirements and current trends. This allows a single run to produce projects in Next.js, SvelteKit, and Remix simultaneously without being constrained to one stack up front.
 
 ### Enhancement Guide (`user-suggest.html`)
-After each project completes, the skill generates a five-category enhancement guide and appends it to `user-suggest.html` — a cumulative file that persists across all runs.
+After each project completes, the skill generates a five-category enhancement guide saved as `projects/{slug}/user-suggest.html` — one standalone file per project. Five projects → five independent files.
 
 | Category | Contents |
 |----------|----------|
@@ -296,14 +295,14 @@ Can also be applied optionally to any completed project for uniform quality upli
 │       │   ├── PRD.md
 │       │   └── ROADMAP.md
 │       ├── README.md              ← auto-generated
+│       ├── user-suggest.html      ← per-project enhancement guide (standalone)
 │       └── ... (source code)
 ├── report_data/
 │   ├── {slug}_log.json
 │   └── {slug}_suggestions.json   ← enhancement guide data per project
 ├── .auto-project-builder-checkpoint.json  ← exists during run, deleted on completion
 ├── {YYYYMMDDHHmm}_report.html     ← per-run report, timestamped to minute (e.g. 202605242157_report.html)
-├── overview.html                  ← cumulative catalog, append-only across all runs
-└── user-suggest.html              ← cumulative enhancement guide, updated every run
+└── overview.html                  ← cumulative catalog, append-only across all runs
 ```
 
 ### `{YYYYMMDDHHmm}_report.html`
@@ -319,11 +318,10 @@ A new timestamped report is created for every run (hour + minute included, e.g. 
 - Full project catalog with platform / type / score filters
 - Statistics dashboard (total projects, stack distribution, average QA attempts, average idea score)
 
-### `user-suggest.html`
-Updated after each project completes. Includes a card per project with:
+### `projects/{slug}/user-suggest.html`
+Generated immediately after each project completes — one standalone file per project. Includes:
 - Quick wins, feature enhancements, tech improvements, growth strategies, monetization ideas
 - Priority and estimated effort labels per suggestion
-- Filterable by project, category, and priority
 
 ---
 
