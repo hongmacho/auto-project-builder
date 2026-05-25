@@ -95,58 +95,93 @@ ls .auto-project-builder-checkpoint.json 2>/dev/null
 
 ---
 
-### 질문 2 — 기술 스택 (PLATFORM에 따라 옵션 자동 생성)
+### 질문 1.5 — 아이디어 유무
 
-**PLATFORM = 웹:**
 ```
-어떤 기술 스택을 사용할까요?
+생각하고 계신 아이디어가 있으신가요?
+
+1. 알아서   — 트렌드·카테고리 기반으로 아이디어를 자율 기획합니다
+2. 직접 입력 — 만들고 싶은 서비스를 설명해 주세요
+```
+
+**"직접 입력" 선택 시**:
+- 사용자로부터 아이디어 설명을 자유 텍스트로 입력받는다
+- 입력 내용을 `USER_IDEA`에 저장
+- 사용자가 원하는 서비스가 명확하므로 PROJECT_COUNT = 1로 자동 설정
+- 서비스 유형(Q3)과 프로젝트 개수(Q4)는 물어보지 않는다 → **질문 2로 바로 진행**
+- 기술 스택(Q2)은 선호 여부만 확인 (없어도 Phase 1에서 아이디어에 맞게 자율 결정)
+
+**"알아서" 선택 시**:
+- `USER_IDEA = null`로 저장
+- 기존 흐름대로 Q2 → Q3 → Q4 순서로 진행
+
+→ 선택 결과를 `USER_IDEA`에 저장 (직접 입력 텍스트 또는 null).
+
+---
+
+### 질문 2 — 선호하는 기술 스택 (PLATFORM 및 USER_IDEA 기반 추천)
+
+> **이 질문은 항상 표시된다.** 단, USER_IDEA가 있을 경우 추천 스택이 아이디어 내용을 반영한다.
+
+**PLATFORM = 웹 (또는 USER_IDEA가 웹 서비스인 경우):**
+```
+선호하는 기술 스택이 있으신가요?
 
 1. Next.js 14+ · shadcn/ui · Drizzle + SQLite   (추천)
 2. Nuxt 3 · Tailwind CSS · PGlite
 3. SvelteKit · shadcn-svelte · Drizzle + SQLite
 4. Remix · shadcn/ui · Drizzle + SQLite
-5. 알아서 — 아이디어에 가장 적합한 스택 자율 선택
-6. 자유롭게 — 직접 입력해 주세요
+5. 없음    — 아이디어가 정해지면 각 프로젝트에 맞는 스택을 자율 선택
+6. 직접 입력 — 원하는 스택을 설명해 주세요
 ```
 
-**PLATFORM = 앱:**
+**PLATFORM = 앱 (또는 USER_IDEA가 모바일 앱인 경우):**
 ```
-어떤 기술 스택을 사용할까요?
+선호하는 기술 스택이 있으신가요?
 
-1. React Native + Expo · SQLite (expo-sqlite)
+1. React Native + Expo · SQLite (expo-sqlite)   (추천)
 2. Flutter · Dart · sqflite
-3. 알아서 — 아이디어에 가장 적합한 스택 자율 선택
-4. 자유롭게 — 직접 입력해 주세요
+3. 없음    — 아이디어가 정해지면 각 프로젝트에 맞는 스택을 자율 선택
+4. 직접 입력 — 원하는 스택을 설명해 주세요
 ```
 
-**PLATFORM = CLI:**
+**PLATFORM = CLI (또는 USER_IDEA가 CLI 도구인 경우):**
 ```
-어떤 기술 스택을 사용할까요?
+선호하는 기술 스택이 있으신가요?
 
-1. Node.js · TypeScript · Commander.js · SQLite
+1. Node.js · TypeScript · Commander.js · SQLite   (추천)
 2. Python · Typer · Click · SQLite
 3. Go · Cobra · SQLite
 4. Rust · Clap · SQLite
-5. 알아서 — 아이디어에 가장 적합한 스택 자율 선택
-6. 자유롭게 — 직접 입력해 주세요
+5. 없음    — 아이디어가 정해지면 각 프로젝트에 맞는 스택을 자율 선택
+6. 직접 입력 — 원하는 스택을 설명해 주세요
 ```
 
-**PLATFORM = 자유롭게:**
+**PLATFORM = 알아서 / 자유롭게:**
 ```
-사용하고 싶은 기술 스택을 자유롭게 설명해 주세요.
+선호하는 기술 스택이 있으신가요?
 (예: "Electron + React + SQLite", "FastAPI + HTMX + PostgreSQL" 등)
-또는 "알아서"라고 입력하면 자율 선택합니다.
+
+1. 없음    — 아이디어가 정해지면 각 프로젝트에 맞는 스택을 자율 선택
+2. 직접 입력 — 원하는 스택을 설명해 주세요
 ```
 
-**"알아서" 선택 시**: 아이디어 생성(Phase 1) 이후 각 아이디어의 특성에 맞게
-프로젝트별로 최적 스택을 독립적으로 결정하고 PRD 작성 전 이유와 함께 고지한다.
-예: `알아서 선택: Flutter — 크로스플랫폼 네이티브 UI가 이 앱의 핵심 경험에 적합하므로`
+**"없음" 선택 시**: `TECH_STACK = "auto-per-idea"`로 저장.
+Phase 1에서 각 아이디어의 특성(플랫폼, 규모, 복잡도)을 고려해 프로젝트별로
+최적 스택을 독립적으로 결정하고, PRD 작성 전 선택 이유와 함께 고지한다.
+예: `스택 선택: Flutter — 크로스플랫폼 네이티브 UI가 이 앱의 핵심 경험에 적합하므로`
 
-→ 선택/입력 결과를 `TECH_STACK`에 저장. "알아서"이면 `TECH_STACK = "auto"`로 저장 후 Phase 2에서 아이디어별 결정.
+복수 프로젝트일 경우 아이디어마다 다른 스택이 선택될 수 있다.
+예: 아이디어 1 → Next.js, 아이디어 2 → SvelteKit, 아이디어 3 → Remix
+
+→ 선택/입력 결과를 `TECH_STACK`에 저장.
 
 ---
 
 ### 질문 3 — 서비스 유형
+
+> **이 질문은 `USER_IDEA = null` (알아서 경로)일 때만 표시된다.**
+> USER_IDEA가 있으면 서비스 유형은 Phase 1에서 아이디어 내용을 기반으로 자율 결정한다.
 
 ```
 어떤 유형의 서비스를 만들고 싶으신가요?
@@ -175,6 +210,9 @@ ls .auto-project-builder-checkpoint.json 2>/dev/null
 
 ### 질문 4 — 프로젝트 개수
 
+> **이 질문은 `USER_IDEA = null` (알아서 경로)일 때만 표시된다.**
+> USER_IDEA가 있으면 PROJECT_COUNT = 1로 자동 설정하고 이 질문은 건너뛴다.
+
 ```
 총 몇 개의 서비스를 만들까요? (기본값: 5, 최대: 10)
 
@@ -192,10 +230,25 @@ ls .auto-project-builder-checkpoint.json 2>/dev/null
 
 ### 설정 요약 출력
 
+**USER_IDEA가 있는 경우 (직접 입력 경로):**
+
 ```
 ━━━ 설정 요약 ━━━
 플랫폼:      {PLATFORM}
-기술 스택:   {TECH_STACK}
+아이디어:    {USER_IDEA}
+선호 스택:   {TECH_STACK | "아이디어 기반 자율 선택"}
+서비스 유형: 아이디어 기반 자율 결정
+프로젝트 수: 1개
+━━━━━━━━━━━━━━━━━
+진행할까요? (yes / 취소)
+```
+
+**USER_IDEA가 없는 경우 (알아서 경로):**
+
+```
+━━━ 설정 요약 ━━━
+플랫폼:      {PLATFORM}
+선호 스택:   {TECH_STACK | "아이디어별 자율 선택"}
 서비스 유형: {SERVICE_CATEGORIES}
 프로젝트 수: {PROJECT_COUNT}개
 ━━━━━━━━━━━━━━━━━
@@ -239,17 +292,9 @@ mcp__context7__resolve-library-id("inquirer")
 
 ### 0-B. 트렌드 조사 (병렬 레인 2)
 
-**OMC_MODE == "omc"** 일 때 — autoresearch 스킬로 심층 조사:
+**OMC_MODE == "omc"** 일 때도 WebSearch 또는 Exa로 직접 조사 (autoresearch는 웹 조사 도구가 아닌 반복 개선 루프이므로 사용하지 않는다):
 
-```
-Skill("oh-my-claudecode:autoresearch",
-  prompt="{SERVICE_CATEGORIES} 카테고리의 2025-2026 시장 트렌드 조사.
-          포함: Product Hunt 인기 서비스, GitHub Trending 저장소,
-          시장 갭(아직 해결 안 된 문제), 경쟁 밀도(high/medium/low).
-          플랫폼: {PLATFORM}")
-```
-
-그 외 모드에서는 WebSearch 또는 Exa로 직접 조사:
+그 외 모드에서도 동일하게 WebSearch 또는 Exa로 직접 조사:
 
 ```
 # Product Hunt 최근 인기 서비스
@@ -282,98 +327,124 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 |--------|------------|-----------|
 | `OMC_MODE` | Phase -0.5 | string: "omc" / "ecc" / "none" |
 | `PLATFORM` | Phase -1 Q1 | string: 웹/앱/CLI/auto/자유 |
-| `TECH_STACK` | Phase -1 Q2 | string: 선택 스택 명칭 또는 "auto" |
-| `SERVICE_CATEGORIES[]` | Phase -1 Q3 | string[]; "auto" 이면 트렌드 기반 자율 결정 |
-| `PROJECT_COUNT` | Phase -1 Q4 | 정수 1–10, 기본 5; "알아서" 이면 공식 계산 |
+| `USER_IDEA` | Phase -1 Q1.5 | string(사용자 입력 텍스트) 또는 null; null이면 알아서 경로 |
+| `TECH_STACK` | Phase -1 Q2 | string: 선택 스택 명칭 또는 "auto-per-idea" (아이디어별 자율 결정) |
+| `SERVICE_CATEGORIES[]` | Phase -1 Q3 (USER_IDEA=null 시만) | string[]; "auto" 이면 트렌드 기반 자율 결정; USER_IDEA 있으면 Phase 1에서 자율 결정 |
+| `PROJECT_COUNT` | Phase -1 Q4 (USER_IDEA=null 시만) | 정수 1–10, 기본 5; USER_IDEA 있으면 1로 고정; "알아서" 이면 공식 계산 |
 | `STACK_VERSIONS` | Phase 0-A | 라이브러리 버전 맵 |
 | `TREND_DATA` | Phase 0-B | 트렌드 조사 결과 객체 |
 | `IDEAS[]` | Phase 1 | PROJECT_COUNT개 객체 배열 |
-| `IDEA_SCORES[]` | Phase 1.3 | {idea, market, originality, feasibility, total}[] |
+| `IDEA_SCORES[]` | Phase 1.3 | idea-generator 출력: {idea, pain, market, originality, feasibility, flaw_penalty, total/15, verdict}[] |
 | `GITHUB_REPOS[]` | Phase 1.5 | {name, description, url}[] |
 | `REJECTED_IDEAS[]` | Phase 1.3 + 1.5 | 탈락 아이디어 + 사유 |
 | `APPROVED_IDEAS[]` | Phase 1.5 | 최종 승인 아이디어 |
 | `REPLACEMENT_ATTEMPTS` | Phase 1.3 + 1.5 | 정수, 최대 PROJECT_COUNT×3 |
 | `PROJECT_LOG[]` | Phase 2 | 완료 프로젝트 로그 |
 | `QA_ATTEMPTS` | Phase 2-4 | 프로젝트별 QA 재시도 횟수 |
-| `RUN_DATE` | Phase 3 시작 | YYYYMMDD 형식 |
+| `RUN_DATE` | Phase 3 시작 | YYYYMMDDHHmm 형식 (년월일시분, 예: `202605242157`) |
 | `CHECKPOINT_FILE` | Phase -1 | `.auto-project-builder-checkpoint.json` |
 
 ---
 
-## Phase 1: 아이디어 생성 (경쟁 분석 포함)
+## Phase 1: 아이디어 생성 (`idea-generator` 스킬 활용)
 
-**OMC_MODE = "omc"** 일 때 — `team` 스킬로 planner · architect · autoresearch를 **병렬 실행**한다:
-```
-Skill("oh-my-claudecode:team", prompt="[ROLE: planner] 아이디어 기획 / [ROLE: architect] 기술 적합성 / [ROLE: autoresearch] 경쟁 분석")
-```
-→ 세 역할의 결과를 통합하여 IDEAS[] 확정. 자세한 프롬프트는 Agent 위임 전략 섹션 참조.
+> **아이디어 품질이 최종 프로젝트 품질을 결정한다.**
+> 이 단계는 전용 `idea-generator` 스킬에 위임하여 멀티소스 페인 마이닝과 YC 스타일 적대적 평가를 수행한다.
+> 트렌딩 기술이 아니라 **실제 사용자 고통의 증거**에서 아이디어를 뽑아낸다.
 
-그 외 모드에서는 아래 알고리즘대로 직접 생성:
-
-`PROJECT_COUNT`개의 서비스 아이디어를 `SERVICE_CATEGORIES`, `PLATFORM`, `TREND_DATA`를 반영하여 자율 생성.
-
-**분배 알고리즘**:
+### USER_IDEA 분기
 
 ```
-CATEGORY_COUNT = len(SERVICE_CATEGORIES)
-
-if CATEGORY_COUNT == 0 or "자유롭게" in SERVICE_CATEGORIES:
-  IDEAS = generate(PROJECT_COUNT, domain="diverse", platform=PLATFORM, trend=TREND_DATA)
+if USER_IDEA != null:
+  # 사용자가 직접 아이디어를 입력한 경우 — 바로 빌드 준비
+  IDEAS = [{
+    "slug": slugify(USER_IDEA),
+    "name_ko": USER_IDEA,
+    "pain_statement": "사용자가 직접 제시한 아이디어",
+    "pain_evidence": ["사용자 직접 입력"],
+    "target_user": "아이디어 내용에서 자율 추론",
+    "core_features": [],   # Phase 2-1 PRD 작성 시 확정
+    "tech_stack": TECH_STACK,
+    "verdict": "GO"
+  }]
+  SERVICE_CATEGORIES = infer_category(USER_IDEA)
+  APPROVED_IDEAS = IDEAS
+  → Phase 1.5(GitHub 중복 검토)로 바로 진행
 else:
-  IDEAS_PER_CATEGORY = floor(PROJECT_COUNT / CATEGORY_COUNT)
-  REMAINING = PROJECT_COUNT % CATEGORY_COUNT
-  IDEAS = []
-  for category in SERVICE_CATEGORIES:
-    IDEAS += generate(IDEAS_PER_CATEGORY, domain=category, platform=PLATFORM, trend=TREND_DATA)
-  IDEAS += generate(REMAINING, domain=SERVICE_CATEGORIES[0]+"_derivative", platform=PLATFORM)
+  → idea-generator 스킬 호출 (아래)
 ```
 
-각 아이디어에 대해 정의:
-- 서비스명 (영문 slug + 한국어 이름)
-- 타겟 사용자
-- 핵심 기능 3가지
-- **경쟁 서비스 분석** (Exa/WebSearch로 유사 서비스 검색 → 상위 3개 나열)
-- **차별점** — 경쟁 서비스와 구체적으로 다른 점
-- **트렌드 연관성** — `TREND_DATA.market_gaps`와의 연결 설명
-- 선택 이유 (카테고리·플랫폼 연관성 포함)
+### idea-generator 스킬 호출
 
-경쟁 분석은 아이디어 생성과 **병렬**로 Exa를 사용:
+`USER_IDEA == null`인 경우, `idea-generator` 스킬을 아래 컨텍스트와 함께 실행한다:
+
 ```
-WebSearch("{서비스명 키워드} app site:producthunt.com OR site:github.com")
-→ 유사 서비스 발견 시 차별점 항목에 구체적으로 반영
-→ 유사 서비스가 없으면 "경쟁 공백 영역" 으로 표기 (가산점)
+Skill("idea-generator", context={
+  "PLATFORM": PLATFORM,
+  "SERVICE_CATEGORIES": SERVICE_CATEGORIES,
+  "TREND_DATA": TREND_DATA,
+  "PROJECT_COUNT": PROJECT_COUNT,
+  "TECH_STACK": TECH_STACK,
+  "OMC_MODE": OMC_MODE
+})
 ```
+
+idea-generator 스킬이 수행하는 작업:
+
+1. **Phase A — 멀티소스 페인 마이닝** (4레인 병렬)
+   - Reddit: "I wish there was" / "why is there no" 불만 수집
+   - Hacker News: "Ask HN: Is there a tool for..." 미충족 수요 스레드
+   - 앱스토어 1점 리뷰: 경쟁 제품의 반복되는 불만 패턴
+   - GitHub Issues: 인기 저장소의 미해결 feature request
+
+2. **Phase B — 페인 클러스터 → 아이디어 변환**
+   - 수집된 고통 증거를 클러스터링
+   - PROJECT_COUNT × 2개 후보 아이디어 생성 (필터링 여유분)
+   - 모든 아이디어는 실제 인용문에 근거
+
+3. **Phase C — 병렬 3역할 적대적 평가**
+   - planner: 제품 기획자 시각 (가치 제안, 타겟 페르소나, 킬러 기능)
+   - architect: 기술 아키텍트 시각 (구현 가능성, 리스크, MVP sprint 수)
+   - critic: YC 심사위원 시각 (실패 이유 먼저, 경쟁자 검토, 수익화 경로)
+
+4. **Phase D — 15점 YC 스코어카드 + go/no-go 판정**
+   - 페인 강도(1-3) + 시장 규모(1-3) + 독창성(1-3) + 구현 가능성(1-3) + 치명적 결함 감점(-3~0)
+   - GO(≥11) / CONDITIONAL(8–10) / NO-GO(≤7)
+
+스킬 종료 후 `IDEAS[]`가 컨텍스트에 설정된다. 각 아이디어 객체는 다음을 포함한다:
+`slug`, `name_ko`, `pain_evidence[]`, `target_user`, `core_features[]`,
+`competitors[]`, `differentiator`, `tech_stack`, `score{total/15}`,
+`fatal_flaws[]`, `flaw_mitigations[]`, `verdict`
+
+### TECH_STACK = "auto-per-idea" 처리
+
+`TECH_STACK = "auto-per-idea"`이면 idea-generator가 각 아이디어별로 최적 스택을 독립 결정하여
+아이디어 객체의 `tech_stack` 필드에 저장한다. 이후 Phase 2에서는 아이디어별 `tech_stack`을 사용한다.
 
 ---
 
-## Phase 1.3: 아이디어 사전 평가
+## Phase 1.3: 아이디어 평가 결과 확인
 
-생성된 모든 아이디어를 빌드 전에 점수화하여 필터링한다.
-
-### 평가 기준 (각 1–3점, 합계 9점 만점)
-
-| 항목 | 1점 | 2점 | 3점 |
-|------|-----|-----|-----|
-| **시장성** | 경쟁 포화·차별점 없음 | 틈새 시장 있음 | 경쟁 공백·명확한 수요 |
-| **독창성** | 명백한 클론 | 개선된 클론 | 새로운 접근 또는 조합 |
-| **구현 가능성** | 현재 스택으로 불가 | 가능하나 복잡 | 선택 스택으로 적합 |
-
-### 평가 결과 처리
+> **평가는 idea-generator 내부에서 완료된다.** (15점 YC 스타일 스코어카드)
+> 이 단계는 결과를 확인하고 APPROVED_IDEAS를 확정하는 역할만 한다.
 
 ```
-합계 7점 이상  → APPROVED_IDEAS에 추가 (우선 빌드)
-합계 5–6점     → APPROVED_IDEAS에 추가 (후순위)
-합계 4점 이하  → REJECTED_IDEAS에 추가 (탈락) → 대체 아이디어 생성
+APPROVED_IDEAS = [idea for idea in IDEAS if idea.verdict in ["GO", "CONDITIONAL"]]
+REJECTED_IDEAS = [idea for idea in IDEAS if idea.verdict == "NO-GO"]
+# NO-GO 아이디어의 대체는 idea-generator 내부에서 이미 처리됨
 ```
 
-프로젝트가 `PROJECT_COUNT`개 채워질 때까지 탈락 시 재생성 (최대 `PROJECT_COUNT×3`회).
+판정 기준:
+- **GO** (11점 이상): 즉시 빌드 추천
+- **CONDITIONAL** (8–10점): 지적된 결함 수정 사항을 Phase 2-1 PRD에 반영 후 진행
+- **NO-GO** (7점 이하): 폐기 — idea-generator가 자동으로 대체 아이디어 생성
 
 평가 결과 출력:
 ```
 ━━━ 아이디어 평가 결과 ━━━
-통과: {A}개 ✅  |  탈락: {R}개 ❌  |  대체 생성: {T}회
+통과: {A}개 ✅  |  탈락: {R}개 ❌  |  (idea-generator 내부에서 대체 생성 완료)
 ─────────────────────────
-{서비스명}  시장성 {M}/3 · 독창성 {O}/3 · 구현 {F}/3  =  합계 {T}/9  ✅/❌
+{서비스명}  페인 {P}/3 · 시장 {M}/3 · 독창성 {O}/3 · 구현 {F}/3 · 결함 {X}  = {T}/15  ✅/⚠️/❌
 ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
@@ -401,13 +472,13 @@ gh repo list --limit 200 --json name,description,url
 
 `APPROVED_IDEAS[]`를 순회하며 각 프로젝트를 `TECH_STACK` 기준으로 구현.
 
-### ultrawork 자율 오케스트레이션 옵션 (OMC_MODE = "omc")
+### autopilot 자율 오케스트레이션 옵션 (OMC_MODE = "omc")
 
-**Phase 2 전체를 `ultrawork`에게 위임**하면 사람 개입 없이 완전 자율 실행이 가능하다.
-ultrawork는 내부적으로 PRD·ROADMAP·구현·QA·README·Push를 스스로 조율한다.
+**Phase 2 전체를 `autopilot`에게 위임**하면 사람 개입 없이 완전 자율 실행이 가능하다.
+autopilot은 아이디어부터 동작하는 코드까지 전체 파이프라인을 자율 조율한다 (ultrawork는 병렬 실행 컴포넌트이지 완전 파이프라인이 아니다).
 
 ```
-Skill("oh-my-claudecode:ultrawork",
+Skill("oh-my-claudecode:autopilot",
   prompt="아래 조건으로 {PROJECT_COUNT}개 프로젝트를 처음부터 끝까지 완성하라.
 
   완료 기준:
@@ -427,7 +498,7 @@ Skill("oh-my-claudecode:ultrawork",
   QA 실패 3회 시 스코프 축소 후 재시도, 그래도 실패 시 SKIP 마킹 후 다음 진행.")
 ```
 
-ultrawork를 사용하지 않는 경우(기본값)에는 아래 단계별 루프로 직접 진행.
+autopilot을 사용하지 않는 경우(기본값)에는 아래 단계별 루프로 직접 진행.
 
 ---
 
@@ -730,7 +801,7 @@ Linux/WSL 환경이면 알림을 생략하고 터미널에만 출력.
 
 ```json
 {
-  "run_date": "YYYYMMDD",
+  "run_date": "YYYYMMDDHHmm",
   "platform": "PLATFORM",
   "tech_stack": "TECH_STACK",
   "service_categories": [],
@@ -778,13 +849,93 @@ rm .auto-project-builder-checkpoint.json
 
 ---
 
+### 2-10. 프로젝트별 고도화 제안 수집
+
+프로젝트 완료 직후 해당 프로젝트의 후속 작업과 고도화 전략을 생성하여 `user-suggest.html`에 누적한다.
+
+**생성 항목:**
+
+```
+per_project_suggestion = {
+  "slug": slug,
+  "name": 서비스명,
+  "tech_stack": TECH_STACK,
+  "platform": PLATFORM,
+  "github_url": GitHub URL,
+  "completed_at": ISO 날짜,
+
+  # 즉시 할 수 있는 후속 작업 (단기 — 1~2주)
+  "quick_wins": [
+    "사용자 피드백 수집을 위한 간단한 설문 폼 추가",
+    "랜딩 페이지 / 소개 페이지 작성 및 Product Hunt 등록",
+    "기본 분석 (GA4 or Plausible) 연동",
+    "실제 사용자 3명에게 베타 테스트 요청",
+    ...  # PRD Must-have 기능 기반으로 구체화
+  ],
+
+  # 기능 고도화 전략 (중기 — 1~3개월)
+  "feature_enhancements": [
+    {
+      "title": "기능명",
+      "description": "구체적 구현 방향",
+      "priority": "high | medium | low",
+      "effort": "small | medium | large"
+    },
+    ...  # PRD Nice-to-have + 경쟁 서비스 분석에서 도출
+  ],
+
+  # 기술 부채 / 리팩토링 (중기)
+  "tech_improvements": [
+    "테스트 커버리지 80% → 95% 향상",
+    "SQLite → PostgreSQL 마이그레이션 가이드",
+    "CI/CD 파이프라인 구축 (GitHub Actions)",
+    ...  # QA 과정에서 발견한 이슈 기반으로 구체화
+  ],
+
+  # 성장 전략 (장기 — 3~6개월)
+  "growth_strategies": [
+    {
+      "title": "전략명",
+      "description": "구체적 실행 방법",
+      "expected_impact": "예상 효과"
+    },
+    ...  # 경쟁 분석 + 시장 트렌드 기반으로 도출
+  ],
+
+  # 수익화 아이디어
+  "monetization_ideas": [
+    "프리미엄 플랜 (기능 제한 / 용량 제한)",
+    "팀 플랜 (협업 기능 추가)",
+    ...  # 서비스 유형·타겟 사용자 기반으로 현실적인 아이디어
+  ]
+}
+```
+
+**OMC_MODE = "omc"** 일 때:
+```
+Agent(oh-my-claudecode:planner,
+  prompt="projects/{slug}/ 의 PRD, 구현 내용, QA 결과, 경쟁 분석을 기반으로
+          단기 후속 작업(quick_wins), 기능 고도화(feature_enhancements),
+          기술 개선(tech_improvements), 성장 전략(growth_strategies),
+          수익화 아이디어(monetization_ideas)를 각 항목별로 3~5개씩 구체적으로 작성하라.
+          현실적이고 실행 가능한 내용만 포함. 추상적 문구 금지.")
+```
+
+그 외 모드에서는 PRD + 구현 내용 + 경쟁 분석을 직접 분석하여 생성.
+
+생성된 데이터를 `report_data/{slug}_suggestions.json`에 저장하고, `user-suggest.html`에 즉시 반영한다.
+
+---
+
 ## Phase 3: 보고서 생성
 
-모든 프로젝트 완료 후 두 파일을 생성/업데이트.
+모든 프로젝트 완료 후 세 파일을 생성/업데이트.
 
 ### 3-1. 날짜별 리포트: `{RUN_DATE}_report.html`
 
-`RUN_DATE` = 실행 시작 날짜 (YYYYMMDD, 예: `20260524_report.html`)
+`RUN_DATE` = 실행 시작 날짜+시간 (YYYYMMDDHHmm, 예: `202605242157_report.html`)
+
+> **같은 날 여러 번 실행해도 파일이 덮어쓰이지 않는다.** 분 단위까지 포함하므로 실행마다 고유한 파일명이 생성된다.
 
 **보고서 구성** (한국어):
 
@@ -822,7 +973,11 @@ rm .auto-project-builder-checkpoint.json
 
 ### 3-2. overview.html 갱신
 
-`overview.html`이 없으면 새로 생성, 있으면 기존 내용에 이번 실행 결과를 **추가**.
+> **⚠️ overview.html은 절대 덮어쓰지 않는다.**
+> 파일이 없으면 새로 생성하고, 있으면 **기존 내용을 보존하면서 이번 실행 결과만 추가**한다.
+> 이전 실행의 프로젝트 카드, 실행 이력, 통계는 절대 삭제하거나 초기화하지 않는다.
+
+**목적**: 모든 실행 이력과 전체 프로젝트 현황을 한 파일에 누적하여 언제든 전체 진행 상황을 한눈에 파악할 수 있게 한다.
 
 **구조**:
 
@@ -830,19 +985,20 @@ rm .auto-project-builder-checkpoint.json
 <!-- overview.html 레이아웃 -->
 헤더: "Project Overview — 전체 프로젝트 현황"
 
-[실행 이력 타임라인]
-  ├─ 2026-05-24  |  웹 / Next.js  |  5개  |  QA 통과율 100%  →  링크
+[실행 이력 타임라인]  ← 새 실행 항목이 맨 위에 추가됨 (기존 항목 유지)
+  ├─ 2026-05-24 21:57  |  웹 / Next.js  |  10개  |  QA 통과율 100%  →  링크
+  ├─ 2026-05-23 15:30  |  웹 / Next.js  |  5개   |  QA 통과율 100%  →  링크
   └─ ...
 
-[전체 프로젝트 카탈로그]
+[전체 프로젝트 카탈로그]  ← 새 프로젝트 카드가 기존 카드 앞에 추가됨 (기존 카드 유지)
   플랫폼별 / 유형별 / 점수별 필터 UI
   각 프로젝트 카드:
     - 서비스명, 플랫폼, 스택, 카테고리, 아이디어 평가 점수
     - GitHub URL 링크
     - 실행 날짜, QA 시도 횟수
 
-[통계 대시보드]
-  - 총 프로젝트 수
+[통계 대시보드]  ← 전체 누적 데이터 기반으로 재계산
+  - 총 프로젝트 수 (누적)
   - 플랫폼 분포 차트
   - 카테고리 분포 차트
   - 기술 스택 사용 빈도
@@ -850,14 +1006,95 @@ rm .auto-project-builder-checkpoint.json
   - 평균 아이디어 점수
 ```
 
-**업데이트 알고리즘**:
-1. `overview.html` 파일 읽기 (없으면 빈 템플릿 생성)
-2. 현재 실행의 `PROJECT_LOG[]` 데이터를 JSON으로 직렬화
-3. HTML 내 `<!-- DATA_INJECT -->` 마커 위치에 새 데이터 삽입
-4. 통계 수치 재계산 후 업데이트
-5. `{RUN_DATE}_report.html`로의 링크 타임라인에 추가
+**업데이트 알고리즘 (추가 전용 — append-only)**:
+
+```
+1. overview.html 파일 존재 여부 확인
+   - 없으면: 빈 템플릿으로 신규 생성 후 3단계로 진행
+   - 있으면: 파일 전체 읽기 (기존 내용 메모리에 보존)
+
+2. 기존 프로젝트 카드 목록 추출 (<!-- PROJECT_CARDS_START --> ~ <!-- PROJECT_CARDS_END --> 사이)
+   → 이 내용은 절대 수정하지 않음
+
+3. 이번 실행의 PROJECT_LOG[] 기반으로 새 프로젝트 카드 HTML 생성
+   → 기존 카드 목록 맨 앞에 새 카드들을 삽입 (기존 카드는 뒤에 그대로 유지)
+
+4. 기존 실행 이력 타임라인 추출 (<!-- TIMELINE_START --> ~ <!-- TIMELINE_END --> 사이)
+   → 새 실행 항목을 맨 위에 추가 (기존 항목은 아래에 그대로 유지)
+   → 항목 형식: {RUN_DATE} | {PLATFORM} / {TECH_STACK} | {PROJECT_COUNT}개 | QA {통과율}% → {RUN_DATE}_report.html 링크
+
+5. 전체 통계 재계산 (기존 + 신규 데이터 합산)
+   → 총 프로젝트 수 = 기존 수 + 이번 실행 수
+   → 평균 점수 = 전체 프로젝트 점수의 평균
+   → 카테고리/플랫폼 분포 = 전체 기준으로 재산출
+
+6. 업데이트된 전체 HTML 저장
+```
+
+> **마커 규칙**: 신규 생성 시 반드시 아래 마커를 포함시켜 후속 업데이트가 정확한 위치를 찾을 수 있게 한다:
+> - `<!-- PROJECT_CARDS_START -->` / `<!-- PROJECT_CARDS_END -->`
+> - `<!-- TIMELINE_START -->` / `<!-- TIMELINE_END -->`
+> - `<!-- STATS_TOTAL -->`, `<!-- STATS_AVG_SCORE -->` (숫자 인라인 마커)
 
 **스타일**: 현대적 HTML+CSS (Tailwind CDN), 다크/라이트 모드 지원, 카드형 레이아웃, 인쇄 가능.
+
+---
+
+### 3-3. user-suggest.html 갱신
+
+`user-suggest.html`은 **프로젝트 완료마다 즉시 갱신**(Phase 2-10에서 호출)되며,
+모든 프로젝트의 후속 작업과 고도화 전략을 한눈에 볼 수 있는 실행 가이드다.
+
+**구조**:
+
+```html
+<!-- user-suggest.html 레이아웃 -->
+헤더: "다음 단계 가이드 — 고도화 전략 & 후속 작업"
+
+[프로젝트 필터 탭]
+  전체 보기 | {서비스명1} | {서비스명2} | ...
+
+[프로젝트 카드 (각 프로젝트별)]
+  ┌─ {서비스명}  [{PLATFORM} / {TECH_STACK}]  GitHub 링크 ↗
+  │
+  │  ⚡ Quick Wins — 지금 바로 할 수 있는 것 (1~2주)
+  │    □ {quick_win_1}
+  │    □ {quick_win_2}
+  │    □ ...
+  │
+  │  🚀 기능 고도화 (1~3개월)
+  │    ┌ [우선순위: high] {기능명} — {설명} / 난이도: {effort}
+  │    ├ [우선순위: medium] ...
+  │    └ ...
+  │
+  │  🔧 기술 개선 사항
+  │    • {tech_improvement_1}
+  │    • {tech_improvement_2}
+  │    • ...
+  │
+  │  📈 성장 전략 (3~6개월)
+  │    ┌ {전략명}: {설명}
+  │    │  → 예상 효과: {expected_impact}
+  │    └ ...
+  │
+  │  💰 수익화 아이디어
+  │    • {monetization_idea_1}
+  │    • ...
+  └─
+
+[전체 우선순위 통합 뷰]
+  모든 프로젝트의 high 우선순위 항목만 모아서 표시
+  (어떤 프로젝트부터 고도화할지 한눈에 비교 가능)
+```
+
+**업데이트 알고리즘**:
+1. `user-suggest.html` 파일 읽기 (없으면 빈 템플릿 생성)
+2. `report_data/{slug}_suggestions.json` 읽기
+3. HTML 내 `<!-- SUGGESTIONS_INJECT_{slug} -->` 마커 위치에 해당 프로젝트 카드 삽입 (없으면 추가)
+4. 이미 카드가 있으면 내용 교체
+5. 전체 우선순위 통합 뷰 재계산
+
+**스타일**: 현대적 HTML+CSS (Tailwind CDN), 다크/라이트 모드 지원, 체크박스 인터랙션(JS), 인쇄 가능.
 
 ---
 
@@ -892,45 +1129,39 @@ OMC가 감지되면 아래 스킬 조합을 사용한다. 각 스킬은 `Skill` 
 #### Phase 0-B: 트렌드 조사
 
 ```
-# 시장 조사 + 심층 리서치 병렬
-Skill("oh-my-claudecode:autoresearch",
-  prompt="SERVICE_CATEGORIES 관련 2025-2026 트렌드, 시장 갭, 인기 기능 조사")
+# WebSearch / Exa로 직접 조사 (autoresearch는 반복 개선 루프이므로 웹 리서치에 사용하지 않음)
+WebSearch("site:producthunt.com {SERVICE_CATEGORIES} {PLATFORM} app 2025 2026")
+WebSearch("github trending {TECH_STACK_KEYWORD} repositories 2025")
+WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 ```
 
-#### Phase 1: 아이디어 기획 — team으로 병렬 멀티에이전트 실행
+#### Phase 1: 아이디어 기획 — `idea-generator` 스킬 위임
 
-`team` 스킬로 planner · architect · autoresearch를 **동시에** 실행한다.
-단일 에이전트 순차 실행 대비 기획 시간을 대폭 단축하고 관점을 다양화한다.
-
-```
-Skill("oh-my-claudecode:team",
-  prompt="아이디어 기획 팀 구성. 아래 3개 역할을 병렬로 실행하라.
-
-  [ROLE: planner]
-  TREND_DATA 기반으로 {PROJECT_COUNT}개 아이디어 기획.
-  각 아이디어에 타겟 사용자, 핵심 기능 3개, 차별점 포함.
-  플랫폼: {PLATFORM}, 카테고리: {SERVICE_CATEGORIES}
-
-  [ROLE: architect]
-  planner 결과를 받아 아이디어별 {TECH_STACK} 기술 적합성 평가.
-  구현 가능성(feasibility) 점수 산정 근거와 리스크 제공.
-
-  [ROLE: autoresearch]
-  {SERVICE_CATEGORIES} 각 카테고리의 경쟁 서비스 3개씩 조사.
-  시장 갭과 차별화 기회를 planner 결과에 보강.")
-
-# team 결과를 통합하여 IDEAS[] 최종 확정
-→ planner 아이디어 + architect 적합성 점수 + autoresearch 시장 분석 병합
-→ Phase 1.3 아이디어 평가로 진행
-```
-
-#### Phase 2 전체: ultrawork 자율 오케스트레이션 (선택 옵션)
-
-team 기획 결과를 바탕으로 **Phase 2 전체를 사람 개입 없이 완전 자율 실행**하고 싶을 때 사용한다.
-ultrawork는 내부적으로 PRD·ROADMAP·구현·QA·README·Push를 스스로 조율하므로, Phase 2-1 ~ 2-6 루프를 수동으로 진행할 필요가 없다.
+Phase 1 전체를 `idea-generator` 스킬에 위임한다.
+내부적으로 **멀티소스 페인 마이닝 + planner · architect · critic 3역할 병렬 평가 + YC 스코어카드**를 수행하며,
+단순 트렌드 조사 기반 아이디어 생성보다 훨씬 높은 품질의 결과를 낸다.
 
 ```
-Skill("oh-my-claudecode:ultrawork",
+Skill("idea-generator", context={
+  "PLATFORM": PLATFORM,
+  "SERVICE_CATEGORIES": SERVICE_CATEGORIES,
+  "TREND_DATA": TREND_DATA,        # Phase 0-B 결과 전달
+  "PROJECT_COUNT": PROJECT_COUNT,
+  "TECH_STACK": TECH_STACK,
+  "OMC_MODE": OMC_MODE
+})
+# 결과: IDEAS[] — 각 아이디어에 pain_evidence[], score{total/15}, verdict, fatal_flaws[] 포함
+→ Phase 1.3 아이디어 평가 결과 확인으로 진행
+```
+
+#### Phase 2 전체: autopilot 자율 오케스트레이션 (선택 옵션)
+
+기획 결과를 바탕으로 **Phase 2 전체를 사람 개입 없이 완전 자율 실행**하고 싶을 때 사용한다.
+autopilot은 아이디어부터 동작하는 코드까지 전체 파이프라인을 조율한다.
+(ultrawork는 병렬 실행 컴포넌트이며 완전 파이프라인이 아니다 — 풀 파이프라인에는 autopilot을 사용한다)
+
+```
+Skill("oh-my-claudecode:autopilot",
   prompt="{PROJECT_COUNT}개 프로젝트를 아래 사양으로 처음부터 끝까지 완성하라.
 
   프로젝트 목록 (각 항목: slug | 서비스명 | 한 줄 설명):
@@ -953,7 +1184,7 @@ Skill("oh-my-claudecode:ultrawork",
   각 프로젝트는 독립적으로 병렬 실행 가능하면 병렬로 처리하라.")
 ```
 
-ultrawork를 사용하지 않는 경우(기본값)에는 아래 Phase 2-1 ~ 2-6 단계별 루프로 직접 진행.
+autopilot을 사용하지 않는 경우(기본값)에는 아래 Phase 2-1 ~ 2-6 단계별 루프로 직접 진행.
 
 ---
 
@@ -1151,10 +1382,12 @@ GitHub push 실패 시 최대 3회 재시도 (지수 백오프 5s→10s→20s).
 │       ├── README.md                ← 자동 생성
 │       └── ... (소스 코드)
 ├── report_data/
-│   └── {slug}_log.json
+│   ├── {slug}_log.json              ← 프로젝트별 빌드 로그
+│   └── {slug}_suggestions.json     ← 프로젝트별 고도화 제안 원본
 ├── .auto-project-builder-checkpoint.json  ← 실행 중 존재, 완료 시 삭제
-├── {YYYYMMDD}_report.html           ← 이번 실행 보고서
-└── overview.html                    ← 전체 누적 현황
+├── {YYYYMMDDHHmm}_report.html       ← 이번 실행 보고서 (시분 포함으로 같은 날 여러 번 실행해도 덮어쓰지 않음)
+├── overview.html                    ← 전체 누적 현황
+└── user-suggest.html                ← 프로젝트별 후속 작업 & 고도화 전략 가이드 (프로젝트 완료마다 갱신)
 ```
 
 ---
@@ -1186,6 +1419,7 @@ GitHub push 실패 시 최대 3회 재시도 (지수 백오프 5s→10s→20s).
 
 - SQLite DB 파일 `.gitignore` 추가 (`*.db`, `*.sqlite`)
 - `.env.local` `.gitignore` 추가, `.env.example` 커밋
-- `overview.html`은 누적 파일 — 삭제하지 않도록 주의
-- `{RUN_DATE}_report.html`은 실행마다 새로 생성 (덮어쓰지 않음)
+- `overview.html`은 누적 파일 — 절대 삭제하거나 전체를 교체하지 않음. 항상 기존 내용 보존 + 새 내용 추가만 허용
+- `{RUN_DATE}_report.html` 파일명에 시분(HHmm)이 포함되므로, 같은 날 여러 번 실행해도 파일이 덮어쓰이지 않음 (예: `202605242157_report.html`)
+- `RUN_DATE`는 Phase 3 시작 시 `date +%Y%m%d%H%M` 형식으로 캡처 (예: `202605242157`)
 - `.auto-project-builder-checkpoint.json`은 실행 중에만 존재 — 완료 시 자동 삭제

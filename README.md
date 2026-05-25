@@ -46,18 +46,18 @@ A Claude Code skill that runs a fully autonomous pipeline: interactive setup →
         └──────────────┬────────────────────┘
                        ▼
         ┌──────────────────────────────────────────────────┐
-        │  Phase 1  Idea Generation                        │
-        │  + Competitive Analysis (Exa search per idea)    │
-        │  · Auto path: generate from trends + categories  │
+        │  Phase 1  Idea Generation (idea-generator skill) │
+        │  · Pain mining: Reddit/HN/AppStore/GitHub Issues │
+        │  · 3-role adversarial eval: planner+architect+   │
+        │    critic (YC-style fatal-flaw-first)            │
         │  · User-idea path: use provided idea directly    │
-        │  · TECH_STACK=none → pick per-idea at this phase │
         └──────────────┬───────────────────────────────────┘
                        ▼
         ┌──────────────────────────────┐
-        │  Phase 1.3  Idea Scoring     │
-        │  Market · Originality ·      │
-        │  Feasibility  /9 pts         │
-        │  → auto-reroll if below 5    │
+        │  Phase 1.3  Score Review     │
+        │  15-pt YC scorecard          │
+        │  GO / CONDITIONAL / NO-GO    │
+        │  → auto-replace NO-GO ideas  │
         │  (skipped for user's idea)   │
         └──────────────┬───────────────┘
                        ▼
@@ -131,22 +131,33 @@ Selecting **Auto** / **None** on any question lets Claude decide autonomously ba
 ### Checkpoint Resume
 Progress is saved to `.auto-project-builder-checkpoint.json` after each completed project. If the run is interrupted, the next invocation offers to resume from where it left off — completed projects are skipped automatically.
 
-### Trend-Based Idea Generation
-In parallel with Context7 stack research, the skill searches Product Hunt and GitHub Trending to find categories gaining traction and unsolved market gaps. These feed directly into idea generation.
+### High-Quality Idea Generation (`idea-generator` skill)
+Phase 1 delegates to a dedicated `idea-generator` skill that starts from **real user pain**, not trending technology. The process:
 
-### Idea Scoring
-Every idea is scored before building begins.
+1. **Multi-source pain mining** (4 parallel lanes)
+   - Reddit: "I wish there was" / "why is there no" complaints
+   - Hacker News: "Ask HN: Is there a tool for..." threads
+   - App Store 1-star reviews: repeated frustration patterns in competing apps
+   - GitHub Issues: unresolved feature requests in popular repos
+
+2. **Pain-to-idea transformation** — every idea is backed by real user quotes, not speculation
+
+3. **3-role adversarial evaluation** (run in parallel)
+   - Planner: value proposition, killer feature, target persona
+   - Architect: technical feasibility, risks, MVP sprint estimate
+   - Critic (YC-style): fatal flaws first, market size, defensibility, monetization
+
+4. **15-point YC scorecard + go/no-go verdict**
 
 | Criterion | 1 pt | 2 pts | 3 pts |
 |-----------|------|-------|-------|
-| Market fit | Saturated niche | Some differentiation | Clear gap |
-| Originality | Obvious clone | Improved clone | Novel approach |
-| Feasibility | Wrong stack | Possible but complex | Perfect stack fit |
+| Pain strength | Speculation only | Indirect evidence | 5+ direct user quotes |
+| Market size | Niche few | Thousands | Hundreds of thousands+ |
+| Originality | Obvious clone | Improved clone | Novel combination |
+| Feasibility | Stack mismatch | Possible but risky | Perfect stack fit |
+| Fatal flaw penalty | — | — | −1 to −3 pts |
 
-Ideas scoring below 5/9 are automatically replaced with a new idea.
-
-### Competitive Analysis
-For each idea, the skill runs an Exa search for similar services. If competitors are found, the differentiation section is populated concretely. If no competitors exist, it is flagged as a market gap — a scoring bonus.
+**Verdicts**: GO (≥11 pts) · CONDITIONAL (8–10 pts) · NO-GO (≤7 pts, auto-replaced)
 
 ### GitHub Dedup
 Runs `gh repo list` and filters out ideas that are too similar to existing repositories, then auto-generates replacements.
@@ -200,22 +211,24 @@ When running inside [oh-my-claudecode](https://github.com/oh-my-claudecode), the
 | `everything-claude-code:*` skills | `"ecc"` | ECC agent suite |
 | Neither | `"none"` | Built-in agents |
 
-### Phase 1: Parallel Planning with `team`
+### Phase 1: Pain-Driven Idea Generation with `idea-generator`
 
-When `OMC_MODE = "omc"`, idea generation runs three roles simultaneously via the `team` skill — cutting planning time and diversifying perspectives:
+When `OMC_MODE = "omc"`, the `idea-generator` skill runs three agent roles in parallel for maximum idea quality:
 
 | Role | Responsibility |
 |------|----------------|
-| `planner` | Generate ideas with target users, core features, differentiators |
-| `architect` | Evaluate tech feasibility and implementation risks per idea |
-| `autoresearch` | Research 3 competing services per category; surface market gaps |
+| `planner` | Value proposition, killer feature, target persona, 6-month survival scenario |
+| `architect` | Technical feasibility score, implementation risks, MVP sprint count |
+| `critic` | YC-style fatal-flaw hunting, competitor analysis, monetization path, go/no-go |
 
-### Phase 2: Full Autonomous Orchestration with `ultrawork`
+This replaces simple trend-based generation with evidence-backed, adversarially validated ideas.
 
-Optionally hand off all of Phase 2 (PRD → ROADMAP → implement → QA → README → push) to `ultrawork` for zero-touch execution:
+### Phase 2: Full Autonomous Orchestration with `autopilot`
+
+Optionally hand off all of Phase 2 (PRD → ROADMAP → implement → QA → README → push) to `autopilot` for zero-touch execution:
 
 ```
-Skill("oh-my-claudecode:ultrawork",
+Skill("oh-my-claudecode:autopilot",
   prompt="Complete {N} projects end-to-end.
   PLATFORM / TECH_STACK / PRD path: projects/{slug}/docs/PRD.md
   Done when: zero build errors + 80%+ coverage + README + GitHub push")
@@ -227,7 +240,7 @@ After implementation, `ralph` applies a PRD-driven acceptance-criteria loop unti
 
 **Auto-triggered when:**
 - QA failed 2+ times
-- Idea scored ≤ 6/9
+- Idea scored ≤ 7/15 (CONDITIONAL verdict)
 - Code review found 3+ HIGH issues
 
 **Criteria ralph enforces:**

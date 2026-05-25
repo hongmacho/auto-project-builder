@@ -292,17 +292,9 @@ mcp__context7__resolve-library-id("inquirer")
 
 ### 0-B. 트렌드 조사 (병렬 레인 2)
 
-**OMC_MODE == "omc"** 일 때 — autoresearch 스킬로 심층 조사:
+**OMC_MODE == "omc"** 일 때도 WebSearch 또는 Exa로 직접 조사 (autoresearch는 웹 조사 도구가 아닌 반복 개선 루프이므로 사용하지 않는다):
 
-```
-Skill("oh-my-claudecode:autoresearch",
-  prompt="{SERVICE_CATEGORIES} 카테고리의 2025-2026 시장 트렌드 조사.
-          포함: Product Hunt 인기 서비스, GitHub Trending 저장소,
-          시장 갭(아직 해결 안 된 문제), 경쟁 밀도(high/medium/low).
-          플랫폼: {PLATFORM}")
-```
-
-그 외 모드에서는 WebSearch 또는 Exa로 직접 조사:
+그 외 모드에서도 동일하게 WebSearch 또는 Exa로 직접 조사:
 
 ```
 # Product Hunt 최근 인기 서비스
@@ -342,7 +334,7 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 | `STACK_VERSIONS` | Phase 0-A | 라이브러리 버전 맵 |
 | `TREND_DATA` | Phase 0-B | 트렌드 조사 결과 객체 |
 | `IDEAS[]` | Phase 1 | PROJECT_COUNT개 객체 배열 |
-| `IDEA_SCORES[]` | Phase 1.3 | {idea, market, originality, feasibility, total}[] |
+| `IDEA_SCORES[]` | Phase 1.3 | idea-generator 출력: {idea, pain, market, originality, feasibility, flaw_penalty, total/15, verdict}[] |
 | `GITHUB_REPOS[]` | Phase 1.5 | {name, description, url}[] |
 | `REJECTED_IDEAS[]` | Phase 1.3 + 1.5 | 탈락 아이디어 + 사유 |
 | `APPROVED_IDEAS[]` | Phase 1.5 | 최종 승인 아이디어 |
@@ -354,112 +346,105 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 
 ---
 
-## Phase 1: 아이디어 생성 (경쟁 분석 포함)
+## Phase 1: 아이디어 생성 (`idea-generator` 스킬 활용)
+
+> **아이디어 품질이 최종 프로젝트 품질을 결정한다.**
+> 이 단계는 전용 `idea-generator` 스킬에 위임하여 멀티소스 페인 마이닝과 YC 스타일 적대적 평가를 수행한다.
+> 트렌딩 기술이 아니라 **실제 사용자 고통의 증거**에서 아이디어를 뽑아낸다.
 
 ### USER_IDEA 분기
 
 ```
 if USER_IDEA != null:
-  # 사용자가 아이디어를 직접 입력한 경우
-  IDEAS = [parse_and_enrich(USER_IDEA, PLATFORM)]
-  # SERVICE_CATEGORIES는 USER_IDEA 내용에서 자율 추론
+  # 사용자가 직접 아이디어를 입력한 경우 — 바로 빌드 준비
+  IDEAS = [{
+    "slug": slugify(USER_IDEA),
+    "name_ko": USER_IDEA,
+    "pain_statement": "사용자가 직접 제시한 아이디어",
+    "pain_evidence": ["사용자 직접 입력"],
+    "target_user": "아이디어 내용에서 자율 추론",
+    "core_features": [],   # Phase 2-1 PRD 작성 시 확정
+    "tech_stack": TECH_STACK,
+    "verdict": "GO"
+  }]
   SERVICE_CATEGORIES = infer_category(USER_IDEA)
-  # Phase 1.3 평가는 생략 (사용자가 원하는 아이디어이므로 검증 불필요)
   APPROVED_IDEAS = IDEAS
   → Phase 1.5(GitHub 중복 검토)로 바로 진행
 else:
-  → 아래 알고리즘대로 아이디어 자율 생성
+  → idea-generator 스킬 호출 (아래)
 ```
+
+### idea-generator 스킬 호출
+
+`USER_IDEA == null`인 경우, `idea-generator` 스킬을 아래 컨텍스트와 함께 실행한다:
+
+```
+Skill("idea-generator", context={
+  "PLATFORM": PLATFORM,
+  "SERVICE_CATEGORIES": SERVICE_CATEGORIES,
+  "TREND_DATA": TREND_DATA,
+  "PROJECT_COUNT": PROJECT_COUNT,
+  "TECH_STACK": TECH_STACK,
+  "OMC_MODE": OMC_MODE
+})
+```
+
+idea-generator 스킬이 수행하는 작업:
+
+1. **Phase A — 멀티소스 페인 마이닝** (4레인 병렬)
+   - Reddit: "I wish there was" / "why is there no" 불만 수집
+   - Hacker News: "Ask HN: Is there a tool for..." 미충족 수요 스레드
+   - 앱스토어 1점 리뷰: 경쟁 제품의 반복되는 불만 패턴
+   - GitHub Issues: 인기 저장소의 미해결 feature request
+
+2. **Phase B — 페인 클러스터 → 아이디어 변환**
+   - 수집된 고통 증거를 클러스터링
+   - PROJECT_COUNT × 2개 후보 아이디어 생성 (필터링 여유분)
+   - 모든 아이디어는 실제 인용문에 근거
+
+3. **Phase C — 병렬 3역할 적대적 평가**
+   - planner: 제품 기획자 시각 (가치 제안, 타겟 페르소나, 킬러 기능)
+   - architect: 기술 아키텍트 시각 (구현 가능성, 리스크, MVP sprint 수)
+   - critic: YC 심사위원 시각 (실패 이유 먼저, 경쟁자 검토, 수익화 경로)
+
+4. **Phase D — 15점 YC 스코어카드 + go/no-go 판정**
+   - 페인 강도(1-3) + 시장 규모(1-3) + 독창성(1-3) + 구현 가능성(1-3) + 치명적 결함 감점(-3~0)
+   - GO(≥11) / CONDITIONAL(8–10) / NO-GO(≤7)
+
+스킬 종료 후 `IDEAS[]`가 컨텍스트에 설정된다. 각 아이디어 객체는 다음을 포함한다:
+`slug`, `name_ko`, `pain_evidence[]`, `target_user`, `core_features[]`,
+`competitors[]`, `differentiator`, `tech_stack`, `score{total/15}`,
+`fatal_flaws[]`, `flaw_mitigations[]`, `verdict`
 
 ### TECH_STACK = "auto-per-idea" 처리
 
-`TECH_STACK = "auto-per-idea"`이면, 아이디어별 스택 결정은 **Phase 1 아이디어 확정 시점**에 수행한다.
-각 아이디어에 대해 플랫폼, 규모, 핵심 기능 복잡도를 고려해 최적 스택을 독립적으로 결정하고
+`TECH_STACK = "auto-per-idea"`이면 idea-generator가 각 아이디어별로 최적 스택을 독립 결정하여
 아이디어 객체의 `tech_stack` 필드에 저장한다. 이후 Phase 2에서는 아이디어별 `tech_stack`을 사용한다.
 
-```
-# 아이디어별 스택 결정 예시
-idea.tech_stack = decide_stack(idea, PLATFORM, STACK_VERSIONS)
-# → "Next.js 14+ · shadcn/ui · Drizzle + SQLite"
-# 결정 이유: "SaaS 대시보드는 SSR + 정적 생성 혼합이 유리하고, Drizzle은 타입 안전성이 높으므로"
-```
-
-복수 프로젝트의 경우 아이디어마다 다른 스택이 선택될 수 있으며, 각 선택 이유를 아이디어 목록 출력 시 함께 표시한다.
-
 ---
 
-**OMC_MODE = "omc"** 일 때 — `team` 스킬로 planner · architect · autoresearch를 **병렬 실행**한다:
-```
-Skill("oh-my-claudecode:team", prompt="[ROLE: planner] 아이디어 기획 / [ROLE: architect] 기술 적합성 / [ROLE: autoresearch] 경쟁 분석")
-```
-→ 세 역할의 결과를 통합하여 IDEAS[] 확정. 자세한 프롬프트는 Agent 위임 전략 섹션 참조.
+## Phase 1.3: 아이디어 평가 결과 확인
 
-그 외 모드에서는 아래 알고리즘대로 직접 생성:
-
-`PROJECT_COUNT`개의 서비스 아이디어를 `SERVICE_CATEGORIES`, `PLATFORM`, `TREND_DATA`를 반영하여 자율 생성.
-
-**분배 알고리즘**:
+> **평가는 idea-generator 내부에서 완료된다.** (15점 YC 스타일 스코어카드)
+> 이 단계는 결과를 확인하고 APPROVED_IDEAS를 확정하는 역할만 한다.
 
 ```
-CATEGORY_COUNT = len(SERVICE_CATEGORIES)
-
-if CATEGORY_COUNT == 0 or "자유롭게" in SERVICE_CATEGORIES:
-  IDEAS = generate(PROJECT_COUNT, domain="diverse", platform=PLATFORM, trend=TREND_DATA)
-else:
-  IDEAS_PER_CATEGORY = floor(PROJECT_COUNT / CATEGORY_COUNT)
-  REMAINING = PROJECT_COUNT % CATEGORY_COUNT
-  IDEAS = []
-  for category in SERVICE_CATEGORIES:
-    IDEAS += generate(IDEAS_PER_CATEGORY, domain=category, platform=PLATFORM, trend=TREND_DATA)
-  IDEAS += generate(REMAINING, domain=SERVICE_CATEGORIES[0]+"_derivative", platform=PLATFORM)
+APPROVED_IDEAS = [idea for idea in IDEAS if idea.verdict in ["GO", "CONDITIONAL"]]
+REJECTED_IDEAS = [idea for idea in IDEAS if idea.verdict == "NO-GO"]
+# NO-GO 아이디어의 대체는 idea-generator 내부에서 이미 처리됨
 ```
 
-각 아이디어에 대해 정의:
-- 서비스명 (영문 slug + 한국어 이름)
-- 타겟 사용자
-- 핵심 기능 3가지
-- **경쟁 서비스 분석** (Exa/WebSearch로 유사 서비스 검색 → 상위 3개 나열)
-- **차별점** — 경쟁 서비스와 구체적으로 다른 점
-- **트렌드 연관성** — `TREND_DATA.market_gaps`와의 연결 설명
-- 선택 이유 (카테고리·플랫폼 연관성 포함)
-
-경쟁 분석은 아이디어 생성과 **병렬**로 Exa를 사용:
-```
-WebSearch("{서비스명 키워드} app site:producthunt.com OR site:github.com")
-→ 유사 서비스 발견 시 차별점 항목에 구체적으로 반영
-→ 유사 서비스가 없으면 "경쟁 공백 영역" 으로 표기 (가산점)
-```
-
----
-
-## Phase 1.3: 아이디어 사전 평가
-
-생성된 모든 아이디어를 빌드 전에 점수화하여 필터링한다.
-
-### 평가 기준 (각 1–3점, 합계 9점 만점)
-
-| 항목 | 1점 | 2점 | 3점 |
-|------|-----|-----|-----|
-| **시장성** | 경쟁 포화·차별점 없음 | 틈새 시장 있음 | 경쟁 공백·명확한 수요 |
-| **독창성** | 명백한 클론 | 개선된 클론 | 새로운 접근 또는 조합 |
-| **구현 가능성** | 현재 스택으로 불가 | 가능하나 복잡 | 선택 스택으로 적합 |
-
-### 평가 결과 처리
-
-```
-합계 7점 이상  → APPROVED_IDEAS에 추가 (우선 빌드)
-합계 5–6점     → APPROVED_IDEAS에 추가 (후순위)
-합계 4점 이하  → REJECTED_IDEAS에 추가 (탈락) → 대체 아이디어 생성
-```
-
-프로젝트가 `PROJECT_COUNT`개 채워질 때까지 탈락 시 재생성 (최대 `PROJECT_COUNT×3`회).
+판정 기준:
+- **GO** (11점 이상): 즉시 빌드 추천
+- **CONDITIONAL** (8–10점): 지적된 결함 수정 사항을 Phase 2-1 PRD에 반영 후 진행
+- **NO-GO** (7점 이하): 폐기 — idea-generator가 자동으로 대체 아이디어 생성
 
 평가 결과 출력:
 ```
 ━━━ 아이디어 평가 결과 ━━━
-통과: {A}개 ✅  |  탈락: {R}개 ❌  |  대체 생성: {T}회
+통과: {A}개 ✅  |  탈락: {R}개 ❌  |  (idea-generator 내부에서 대체 생성 완료)
 ─────────────────────────
-{서비스명}  시장성 {M}/3 · 독창성 {O}/3 · 구현 {F}/3  =  합계 {T}/9  ✅/❌
+{서비스명}  페인 {P}/3 · 시장 {M}/3 · 독창성 {O}/3 · 구현 {F}/3 · 결함 {X}  = {T}/15  ✅/⚠️/❌
 ...
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
@@ -487,13 +472,13 @@ gh repo list --limit 200 --json name,description,url
 
 `APPROVED_IDEAS[]`를 순회하며 각 프로젝트를 `TECH_STACK` 기준으로 구현.
 
-### ultrawork 자율 오케스트레이션 옵션 (OMC_MODE = "omc")
+### autopilot 자율 오케스트레이션 옵션 (OMC_MODE = "omc")
 
-**Phase 2 전체를 `ultrawork`에게 위임**하면 사람 개입 없이 완전 자율 실행이 가능하다.
-ultrawork는 내부적으로 PRD·ROADMAP·구현·QA·README·Push를 스스로 조율한다.
+**Phase 2 전체를 `autopilot`에게 위임**하면 사람 개입 없이 완전 자율 실행이 가능하다.
+autopilot은 아이디어부터 동작하는 코드까지 전체 파이프라인을 자율 조율한다 (ultrawork는 병렬 실행 컴포넌트이지 완전 파이프라인이 아니다).
 
 ```
-Skill("oh-my-claudecode:ultrawork",
+Skill("oh-my-claudecode:autopilot",
   prompt="아래 조건으로 {PROJECT_COUNT}개 프로젝트를 처음부터 끝까지 완성하라.
 
   완료 기준:
@@ -513,7 +498,7 @@ Skill("oh-my-claudecode:ultrawork",
   QA 실패 3회 시 스코프 축소 후 재시도, 그래도 실패 시 SKIP 마킹 후 다음 진행.")
 ```
 
-ultrawork를 사용하지 않는 경우(기본값)에는 아래 단계별 루프로 직접 진행.
+autopilot을 사용하지 않는 경우(기본값)에는 아래 단계별 루프로 직접 진행.
 
 ---
 
@@ -1144,45 +1129,39 @@ OMC가 감지되면 아래 스킬 조합을 사용한다. 각 스킬은 `Skill` 
 #### Phase 0-B: 트렌드 조사
 
 ```
-# 시장 조사 + 심층 리서치 병렬
-Skill("oh-my-claudecode:autoresearch",
-  prompt="SERVICE_CATEGORIES 관련 2025-2026 트렌드, 시장 갭, 인기 기능 조사")
+# WebSearch / Exa로 직접 조사 (autoresearch는 반복 개선 루프이므로 웹 리서치에 사용하지 않음)
+WebSearch("site:producthunt.com {SERVICE_CATEGORIES} {PLATFORM} app 2025 2026")
+WebSearch("github trending {TECH_STACK_KEYWORD} repositories 2025")
+WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 ```
 
-#### Phase 1: 아이디어 기획 — team으로 병렬 멀티에이전트 실행
+#### Phase 1: 아이디어 기획 — `idea-generator` 스킬 위임
 
-`team` 스킬로 planner · architect · autoresearch를 **동시에** 실행한다.
-단일 에이전트 순차 실행 대비 기획 시간을 대폭 단축하고 관점을 다양화한다.
-
-```
-Skill("oh-my-claudecode:team",
-  prompt="아이디어 기획 팀 구성. 아래 3개 역할을 병렬로 실행하라.
-
-  [ROLE: planner]
-  TREND_DATA 기반으로 {PROJECT_COUNT}개 아이디어 기획.
-  각 아이디어에 타겟 사용자, 핵심 기능 3개, 차별점 포함.
-  플랫폼: {PLATFORM}, 카테고리: {SERVICE_CATEGORIES}
-
-  [ROLE: architect]
-  planner 결과를 받아 아이디어별 {TECH_STACK} 기술 적합성 평가.
-  구현 가능성(feasibility) 점수 산정 근거와 리스크 제공.
-
-  [ROLE: autoresearch]
-  {SERVICE_CATEGORIES} 각 카테고리의 경쟁 서비스 3개씩 조사.
-  시장 갭과 차별화 기회를 planner 결과에 보강.")
-
-# team 결과를 통합하여 IDEAS[] 최종 확정
-→ planner 아이디어 + architect 적합성 점수 + autoresearch 시장 분석 병합
-→ Phase 1.3 아이디어 평가로 진행
-```
-
-#### Phase 2 전체: ultrawork 자율 오케스트레이션 (선택 옵션)
-
-team 기획 결과를 바탕으로 **Phase 2 전체를 사람 개입 없이 완전 자율 실행**하고 싶을 때 사용한다.
-ultrawork는 내부적으로 PRD·ROADMAP·구현·QA·README·Push를 스스로 조율하므로, Phase 2-1 ~ 2-6 루프를 수동으로 진행할 필요가 없다.
+Phase 1 전체를 `idea-generator` 스킬에 위임한다.
+내부적으로 **멀티소스 페인 마이닝 + planner · architect · critic 3역할 병렬 평가 + YC 스코어카드**를 수행하며,
+단순 트렌드 조사 기반 아이디어 생성보다 훨씬 높은 품질의 결과를 낸다.
 
 ```
-Skill("oh-my-claudecode:ultrawork",
+Skill("idea-generator", context={
+  "PLATFORM": PLATFORM,
+  "SERVICE_CATEGORIES": SERVICE_CATEGORIES,
+  "TREND_DATA": TREND_DATA,        # Phase 0-B 결과 전달
+  "PROJECT_COUNT": PROJECT_COUNT,
+  "TECH_STACK": TECH_STACK,
+  "OMC_MODE": OMC_MODE
+})
+# 결과: IDEAS[] — 각 아이디어에 pain_evidence[], score{total/15}, verdict, fatal_flaws[] 포함
+→ Phase 1.3 아이디어 평가 결과 확인으로 진행
+```
+
+#### Phase 2 전체: autopilot 자율 오케스트레이션 (선택 옵션)
+
+기획 결과를 바탕으로 **Phase 2 전체를 사람 개입 없이 완전 자율 실행**하고 싶을 때 사용한다.
+autopilot은 아이디어부터 동작하는 코드까지 전체 파이프라인을 조율한다.
+(ultrawork는 병렬 실행 컴포넌트이며 완전 파이프라인이 아니다 — 풀 파이프라인에는 autopilot을 사용한다)
+
+```
+Skill("oh-my-claudecode:autopilot",
   prompt="{PROJECT_COUNT}개 프로젝트를 아래 사양으로 처음부터 끝까지 완성하라.
 
   프로젝트 목록 (각 항목: slug | 서비스명 | 한 줄 설명):
@@ -1205,7 +1184,7 @@ Skill("oh-my-claudecode:ultrawork",
   각 프로젝트는 독립적으로 병렬 실행 가능하면 병렬로 처리하라.")
 ```
 
-ultrawork를 사용하지 않는 경우(기본값)에는 아래 Phase 2-1 ~ 2-6 단계별 루프로 직접 진행.
+autopilot을 사용하지 않는 경우(기본값)에는 아래 Phase 2-1 ~ 2-6 단계별 루프로 직접 진행.
 
 ---
 
