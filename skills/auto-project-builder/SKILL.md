@@ -41,6 +41,18 @@ else:
 
 ## Phase -1: 체크포인트 확인 + 인터랙티브 설정
 
+### ⚠️ 최우선: RUN_DATE 즉시 캡처
+
+**스킬이 시작되는 즉시, 다른 어떤 작업보다 먼저** RUN_DATE를 캡처한다:
+
+```bash
+RUN_DATE=$(date +%Y%m%d%H%M)   # 예: 202605242157
+```
+
+이 값은 이후 절대 변경하지 않는다. Phase 3에서 `{RUN_DATE}_report.html` 파일명으로 사용된다.
+
+---
+
 ### 0단계 — 이전 실행 체크포인트 확인
 
 스킬 시작 직후 체크포인트 파일을 탐색한다:
@@ -341,7 +353,7 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 | `REPLACEMENT_ATTEMPTS` | Phase 1.3 + 1.5 | 정수, 최대 PROJECT_COUNT×3 |
 | `PROJECT_LOG[]` | Phase 2 | 완료 프로젝트 로그 |
 | `QA_ATTEMPTS` | Phase 2-4 | 프로젝트별 QA 재시도 횟수 |
-| `RUN_DATE` | Phase 3 시작 | YYYYMMDDHHmm 형식 (년월일시분, 예: `202605242157`) |
+| `RUN_DATE` | Phase -1 시작 즉시 | YYYYMMDDHHmm 형식 (년월일시분, 예: `202605242157`) — 이후 절대 변경하지 않음 |
 | `CHECKPOINT_FILE` | Phase -1 | `.auto-project-builder-checkpoint.json` |
 
 ---
@@ -971,6 +983,34 @@ Agent(oh-my-claudecode:planner,
 
 ---
 
+**⚠️ 필수 실행: 보고서 파일 생성 알고리즘 (절대 생략 불가)**
+
+> `{RUN_DATE}_report.html` 파일을 디스크에 실제로 저장하는 것은 Phase 3의 **가장 첫 번째 의무**다.
+> overview.html 업데이트 전에 반드시 먼저 완료해야 한다.
+> 이 단계를 건너뛰면 Phase 3 전체가 실패로 간주된다.
+
+```
+1. RUN_DATE 확인
+   → Phase -1에서 이미 캡처됨. 없으면 즉시 캡처: RUN_DATE=$(date +%Y%m%d%H%M)
+
+2. report_data/ 디렉토리의 모든 {slug}_log.json 읽기
+   → PROJECT_LOG[] 재구성 (없으면 이번 세션의 PROJECT_LOG[] 사용)
+
+3. 위 섹션 1~4 구조로 완전한 HTML 작성
+   스타일: Tailwind CDN + 현대적 카드 레이아웃 (기존 overview.html / *_report.html 스타일 참고)
+   언어: 한국어
+   내용: 실행된 모든 프로젝트 데이터를 실제 값으로 채움 (플레이스홀더 금지)
+
+4. 파일 저장 (Write 도구 또는 bash heredoc 사용):
+   경로: ./{RUN_DATE}_report.html  (작업 디렉토리 루트)
+
+5. 저장 확인:
+   ls -la {RUN_DATE}_report.html
+   → 파일이 없거나 크기가 1KB 미만이면 즉시 재생성
+```
+
+---
+
 ### 3-2. overview.html 갱신
 
 > **⚠️ overview.html은 절대 덮어쓰지 않는다.**
@@ -1421,5 +1461,5 @@ GitHub push 실패 시 최대 3회 재시도 (지수 백오프 5s→10s→20s).
 - `.env.local` `.gitignore` 추가, `.env.example` 커밋
 - `overview.html`은 누적 파일 — 절대 삭제하거나 전체를 교체하지 않음. 항상 기존 내용 보존 + 새 내용 추가만 허용
 - `{RUN_DATE}_report.html` 파일명에 시분(HHmm)이 포함되므로, 같은 날 여러 번 실행해도 파일이 덮어쓰이지 않음 (예: `202605242157_report.html`)
-- `RUN_DATE`는 Phase 3 시작 시 `date +%Y%m%d%H%M` 형식으로 캡처 (예: `202605242157`)
+- `RUN_DATE`는 **Phase -1 시작 즉시** `date +%Y%m%d%H%M` 형식으로 캡처 — 이후 절대 변경하지 않음 (예: `202605242157`)
 - `.auto-project-builder-checkpoint.json`은 실행 중에만 존재 — 완료 시 자동 삭제

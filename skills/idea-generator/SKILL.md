@@ -16,6 +16,32 @@ triggers:
 
 ---
 
+## 컨텍스트 관리 원칙
+
+> **원본 데이터는 파일로 저장하고, 메인 컨텍스트에는 요약·슬러그·경로만 보유한다.**
+
+### 3대 규칙
+
+**규칙 1 — 페인 마이닝 결과 즉시 파일 저장**
+Phase A 각 레인 완료 즉시 `report_data/pain_lane_{N}.json`으로 저장한다.
+클러스터링 완료 후 `report_data/pain_clusters.json`에 저장한다.
+메인에는 테마명 + 빈도 요약만 보유:
+```
+PAIN_SUMMARY = [{"theme": "테마명", "frequency": "높음", "evidence_count": 8}, ...]
+```
+
+**규칙 2 — Phase B·C에서 파일 경로만 전달**
+`CANDIDATE_IDEAS` 전체 텍스트를 메인 컨텍스트나 Agent 프롬프트에 포함하지 않는다.
+Phase B 완료 즉시 `report_data/candidate_ideas.json`으로 저장한다.
+Phase C Agent는 이 파일을 직접 읽어 처리한다.
+
+**규칙 3 — 출력은 파일 저장 후 요약만 반환**
+`IDEAS[]` 전체를 메인 컨텍스트에 보유하지 않는다.
+`report_data/ideas_final.json`에 저장하고, 호출자(auto-project-builder)는 이 파일을 읽어 사용한다.
+메인 반환값은 아이디어 요약(slug + name_ko + score.total + verdict)만 포함한다.
+
+---
+
 ## 입력 파라미터
 
 이 스킬은 아래 변수들을 호출 시 컨텍스트로 받는다. 단독 실행 시에는 사용자에게 질문한다.
@@ -92,6 +118,27 @@ PAIN_CLUSTERS = [
 
 빈도가 낮더라도 고통 강도가 강한 클러스터는 별도 표시한다.
 
+**⚠️ 파일 저장 (컨텍스트 보호 — 즉시 실행)**
+
+각 레인 완료 즉시:
+```bash
+mkdir -p report_data
+echo '<레인 N 결과 JSON>' > report_data/pain_lane_N.json
+```
+
+클러스터링 완료 즉시:
+```bash
+echo '<PAIN_CLUSTERS JSON>' > report_data/pain_clusters.json
+```
+
+저장 후 메인 컨텍스트에는 아래 요약만 유지한다 (원본 텍스트는 버린다):
+```
+PAIN_SUMMARY = [
+  {"theme": "테마명", "frequency": "높음", "evidence_count": 8, "file": "report_data/pain_clusters.json"},
+  ...
+]
+```
+
 ---
 
 ## Phase B: 페인→아이디어 변환
@@ -122,6 +169,20 @@ for cluster in top PAIN_CLUSTERS (빈도순):
 
 `TECH_STACK = "auto-per-idea"`이면 각 아이디어의 특성에 맞는 스택을 개별 결정한다.
 
+**⚠️ 파일 저장 (컨텍스트 보호 — 즉시 실행)**
+
+`CANDIDATE_IDEAS` 생성 완료 즉시 파일로 저장하고 메인에서 제거한다:
+```bash
+echo '<CANDIDATE_IDEAS JSON>' > report_data/candidate_ideas.json
+```
+
+메인 컨텍스트에는 슬러그 목록만 유지한다:
+```
+CANDIDATE_SLUGS = ["slug-1", "slug-2", ...]   # 전체 객체 금지
+```
+
+Phase C Agent는 `report_data/candidate_ideas.json`을 직접 읽는다.
+
 ---
 
 ## Phase C: 병렬 3역할 적대적 평가
@@ -131,22 +192,28 @@ for cluster in top PAIN_CLUSTERS (빈도순):
 
 ### OMC_MODE = "omc" 일 때 — Agent 병렬 호출
 
+> **⚠️ 컨텍스트 보호**: `{CANDIDATE_IDEAS}` 전체 텍스트를 프롬프트에 삽입하지 않는다.
+> Agent가 `report_data/candidate_ideas.json`을 직접 읽어 처리한다.
+
 ```
-# 3가지 역할을 동시에 실행
+# 3가지 역할을 동시에 실행 (파일 경로 전달 방식)
 Agent(oh-my-claudecode:planner,
-  prompt="다음 후보 아이디어 목록에 대해 '제품 기획자' 역할로 평가하라:
-          {CANDIDATE_IDEAS}
+  prompt="'제품 기획자' 역할로 후보 아이디어를 평가하라.
+          아이디어 목록: report_data/candidate_ideas.json 을 직접 읽어라.
+          플랫폼: {PLATFORM}
 
           각 아이디어에 대해:
           1. 핵심 가치 제안 한 문장으로 정리
           2. 타겟 사용자 페르소나 구체화 (직업, 상황, 빈도)
           3. 킬러 기능 1개 선택 (나머지는 없애도 쓰는 기능)
           4. 경쟁 서비스 3개 나열 + 각각과의 구체적 차이점
-          5. 6개월 후 이 서비스가 살아있을 시나리오")
+          5. 6개월 후 이 서비스가 살아있을 시나리오
+
+          결과를 report_data/eval_planner.json 으로 저장 후 '저장 완료' 한 줄만 반환.")
 
 Agent(oh-my-claudecode:architect,
-  prompt="다음 후보 아이디어 목록에 대해 '기술 아키텍트' 역할로 평가하라:
-          {CANDIDATE_IDEAS}
+  prompt="'기술 아키텍트' 역할로 후보 아이디어를 평가하라.
+          아이디어 목록: report_data/candidate_ideas.json 을 직접 읽어라.
           선호 스택: {TECH_STACK}  플랫폼: {PLATFORM}
 
           각 아이디어에 대해:
@@ -154,20 +221,28 @@ Agent(oh-my-claudecode:architect,
           2. 핵심 기술 리스크 (예: 실시간 동기화, AI API 비용, 모바일 성능)
           3. MVP 구현에 필요한 예상 sprint 수 (1–6)
           4. 스케일링 시 발생할 수 있는 기술 부채
-          5. 외부 API 의존성 및 리스크")
+          5. 외부 API 의존성 및 리스크
+
+          결과를 report_data/eval_architect.json 으로 저장 후 '저장 완료' 한 줄만 반환.")
 
 Agent(oh-my-claudecode:critic,
-  prompt="다음 후보 아이디어 목록에 대해 'YC 심사위원' 역할로 혹독하게 평가하라.
-          사탕발림 없이, 실패할 이유를 먼저 찾아라:
-          {CANDIDATE_IDEAS}
+  prompt="'YC 심사위원' 역할로 후보 아이디어를 혹독하게 평가하라.
+          아이디어 목록: report_data/candidate_ideas.json 을 직접 읽어라.
+          사탕발림 없이, 실패할 이유를 먼저 찾아라.
 
-          각 아이디어에 대해 다음을 반드시 답하라:
+          각 아이디어에 대해:
           1. 이 아이디어가 6개월 안에 실패할 가장 큰 이유 1가지 (있다면)
           2. 이미 잘 하고 있는 경쟁자가 있는가? 있다면 왜 이길 수 있는가?
           3. 수익화 경로가 명확한가? (없으면 명시)
           4. 네트워크 효과 또는 방어 가능한 해자가 있는가?
           5. 창업자(빌더)가 이 문제를 직접 겪어봤을 가능성이 있는가?
-          6. 최종 평결: GO / CONDITIONAL / NO-GO  (이유 포함)")
+          6. 최종 평결: GO / CONDITIONAL / NO-GO  (이유 포함)
+
+          결과를 report_data/eval_critic.json 으로 저장 후 '저장 완료' 한 줄만 반환.")
+
+# 3개 Agent 완료 후 — eval 파일 3개를 읽어 Phase D 스코어카드 계산
+# 메인 컨텍스트에는 평가 결과 파일 경로만 유지
+EVAL_FILES = ["report_data/eval_planner.json", "report_data/eval_architect.json", "report_data/eval_critic.json"]
 ```
 
 ### OMC_MODE != "omc" 일 때 — 직접 3역할 수행
@@ -228,7 +303,31 @@ while len(IDEAS) < PROJECT_COUNT and attempts < PROJECT_COUNT * 3:
 
 ## 출력 형식
 
-스킬 종료 시 `IDEAS[]`를 아래 구조로 출력한다. auto-project-builder는 이 출력을 Phase 1.3 이후 단계에서 바로 사용한다.
+> **⚠️ 컨텍스트 보호**: `IDEAS[]` 전체를 메인 컨텍스트에 반환하지 않는다.
+> 아래 전체 구조를 `report_data/ideas_final.json`에 저장하고, 메인에는 요약만 반환한다.
+> auto-project-builder는 `report_data/ideas_final.json`을 직접 읽어 Phase 1.3 이후 단계에서 사용한다.
+
+**저장 절차**:
+```bash
+mkdir -p report_data
+echo '<IDEAS_FULL_JSON>' > report_data/ideas_final.json
+```
+
+**메인 컨텍스트 반환값 (요약만)**:
+```json
+{
+  "ideas_file": "report_data/ideas_final.json",
+  "summary": [
+    {"slug": "slug-1", "name_ko": "서비스명", "score": 12, "verdict": "GO"},
+    {"slug": "slug-2", "name_ko": "서비스명", "score": 9,  "verdict": "CONDITIONAL"}
+  ],
+  "stats": {"go": 3, "conditional": 2, "no_go": 2, "final_count": 5}
+}
+```
+
+**전체 IDEAS[] 파일 구조** (`report_data/ideas_final.json`):
+
+스킬 종료 시 `IDEAS[]`를 아래 구조로 저장한다. auto-project-builder는 이 파일을 Phase 1.3 이후 단계에서 바로 사용한다.
 
 ```json
 {

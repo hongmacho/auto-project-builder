@@ -17,6 +17,101 @@ triggers:
 
 ---
 
+## 컨텍스트 관리 원칙 (Context Budget)
+
+> **메인 컨텍스트는 오케스트레이션 정보만 보유한다.**
+> 소스 코드, QA 로그, 에이전트 전체 응답은 메인 컨텍스트에 축적하지 않는다.
+
+### 4대 규칙
+
+**규칙 1 — 프로젝트별 Agent 격리 (가장 중요)**
+Phase 2의 각 프로젝트는 **독립 Agent 호출** 안에서 실행한다.
+프로젝트 코드, QA 오류, 에이전트 상세 응답이 메인 컨텍스트에 쌓이지 않는다.
+Agent는 완료 후 **JSON 요약만** 메인 컨텍스트에 반환한다:
+
+```json
+{
+  "slug": "프로젝트-슬러그",
+  "status": "done | skip",
+  "qa_attempts": 1,
+  "github_url": "https://github.com/...",
+  "errors_fixed": ["오류 1줄 요약"],
+  "skipped_reason": null
+}
+```
+
+**규칙 2 — 소스 코드를 메인 컨텍스트에 읽지 않는다**
+코드 파일은 에이전트가 직접 접근한다. 메인 루프에서 `Read(src/...)` 금지.
+
+**규칙 3 — 파일 기반 상태 저장**
+아이디어 목록, PRD, QA 결과 등 모든 중간 상태를 즉시 파일로 저장한다.
+메인 루프는 **파일 경로와 JSON 요약**만 추적한다.
+
+**규칙 4 — 컴팩션 체크포인트**
+프로젝트 3개 완료마다, 또는 메인 컨텍스트가 길어졌다고 판단되면:
+1. 체크포인트 파일 저장 (`2-8` 형식)
+2. `/compact` 실행
+3. 체크포인트에서 상태 복원 후 이어서 진행
+
+---
+
+## 한국어 UI 원칙 (모든 플랫폼 공통 — 절대 예외 없음)
+
+> **모든 사용자 대면 텍스트는 한국어로 작성한다.**
+> 영어로 작성된 UI는 완성으로 인정하지 않는다.
+
+적용 범위:
+- 버튼 레이블 ("저장", "삭제", "확인", "취소")
+- 네비게이션 메뉴 ("대시보드", "설정", "내 정보")
+- 폼 레이블 및 플레이스홀더 ("이메일을 입력하세요")
+- 에러/성공 메시지 ("저장되었습니다", "필수 항목입니다")
+- 빈 상태 메시지 ("데이터가 없습니다", "아직 항목이 없어요")
+- 페이지 제목, 섹션 헤딩, 카드 타이틀
+- 툴팁, 모달 내용, 알림 메시지
+- CLI: 커맨드 설명(`description`), 에러 메시지, 도움말 텍스트
+
+---
+
+## 기능 풍부성 기준 (Feature Richness — 플랫폼별 최소 기준)
+
+> **기능이 빈약한 프로젝트는 완성으로 인정하지 않는다.**
+> 아래 기준을 충족하지 못하면 Phase 2-3 구현을 재실행한다.
+
+### 웹 앱 최소 기준
+- **화면/페이지 수**: 최소 6개 (로그인 포함 시 7개 이상)
+- **Must-have 기능**: 최소 8개 (CRUD 외 실질적 기능 포함)
+- **필수 포함 요소**:
+  - 검색 또는 필터 기능
+  - 목록 + 상세 보기 (2단계 이상 UX)
+  - 빈 상태(empty state) 처리
+  - 로딩 상태 처리
+  - 에러 상태 처리
+  - 반응형 레이아웃 (모바일 대응)
+  - 대시보드 또는 요약 통계 화면
+
+### 모바일 앱 최소 기준
+- **스크린 수**: 최소 6개
+- **Must-have 기능**: 최소 7개
+- **필수 포함 요소**:
+  - 탭 또는 드로어 네비게이션
+  - 목록 + 상세 화면
+  - 로컬 데이터 영속성 (SQLite)
+  - 빈 상태/에러 상태 처리
+  - 입력 폼 + 유효성 검사
+
+### CLI 최소 기준
+- **커맨드 수**: 최소 5개 (서브커맨드 포함)
+- **Must-have 기능**: 최소 6개
+- **필수 포함 요소**:
+  - 컬러 출력 (chalk 또는 동급)
+  - 테이블 형식 출력
+  - 로컬 DB 영속성
+  - `--help` 전체 문서화
+  - 에러 시 친절한 한국어 메시지
+  - 설정 저장/불러오기
+
+---
+
 ## Phase -0.5: OMC/ECC 환경 감지
 
 이 단계는 **모든 Phase보다 먼저** 자동으로 실행된다. 사용자에게는 별도로 고지하지 않는다.
@@ -40,6 +135,18 @@ else:
 ---
 
 ## Phase -1: 체크포인트 확인 + 인터랙티브 설정
+
+### ⚠️ 최우선: RUN_DATE 즉시 캡처
+
+**스킬이 시작되는 즉시, 다른 어떤 작업보다 먼저** RUN_DATE를 캡처한다:
+
+```bash
+RUN_DATE=$(date +%Y%m%d%H%M)   # 예: 202605242157
+```
+
+이 값은 이후 절대 변경하지 않는다. Phase 3에서 `{RUN_DATE}_report.html` 파일명으로 사용된다.
+
+---
 
 ### 0단계 — 이전 실행 체크포인트 확인
 
@@ -341,7 +448,7 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 | `REPLACEMENT_ATTEMPTS` | Phase 1.3 + 1.5 | 정수, 최대 PROJECT_COUNT×3 |
 | `PROJECT_LOG[]` | Phase 2 | 완료 프로젝트 로그 |
 | `QA_ATTEMPTS` | Phase 2-4 | 프로젝트별 QA 재시도 횟수 |
-| `RUN_DATE` | Phase 3 시작 | YYYYMMDDHHmm 형식 (년월일시분, 예: `202605242157`) |
+| `RUN_DATE` | Phase -1 시작 즉시 | YYYYMMDDHHmm 형식 (년월일시분, 예: `202605242157`) — 이후 절대 변경하지 않음 |
 | `CHECKPOINT_FILE` | Phase -1 | `.auto-project-builder-checkpoint.json` |
 
 ---
@@ -472,6 +579,78 @@ gh repo list --limit 200 --json name,description,url
 
 `APPROVED_IDEAS[]`를 순회하며 각 프로젝트를 `TECH_STACK` 기준으로 구현.
 
+### ⚠️ 프로젝트별 Agent 격리 (컨텍스트 보호 — 절대 예외 없음)
+
+**메인 루프는 각 프로젝트를 독립 Agent로 위임하고 JSON 요약만 수집한다.**
+Phase 2-1~2-10의 모든 단계(PRD, 구현, QA, README, push)는 해당 Agent 내부에서 실행된다.
+
+```
+# 메인 루프 — 컨텍스트 오염 없는 격리 패턴
+PROJECT_LOG = []
+
+for idea in APPROVED_IDEAS:
+  if idea.slug in CHECKPOINT.completed_projects:
+    continue  # 이미 완료된 프로젝트는 건너뜀
+
+  # 아이디어 요약만 전달 (전체 객체 금지 — 불필요한 컨텍스트 증가 방지)
+  idea_summary = {
+    "slug": idea.slug,
+    "name_ko": idea.name_ko,
+    "tech_stack": idea.tech_stack,
+    "core_features": idea.core_features,   # 기능 목록만
+    "platform": PLATFORM
+  }
+
+  result = Agent(
+    prompt=f"""
+아래 프로젝트를 처음부터 끝까지 완성하라.
+
+아이디어: {idea_summary}
+플랫폼: {PLATFORM}
+스택: {idea.tech_stack}
+작업 경로: projects/{idea.slug}/
+
+완료 순서: PRD 작성 → ROADMAP → 구현 → QA 루프(최대 3회) → README → GitHub push
+모든 단계는 이 Agent 내부에서 직접 실행하라.
+
+완료 기준:
+- tsc/lint/build 오류 0개
+- 한국어 UI (모든 버튼·레이블·메시지)
+- 웹/앱: 최소 6개 화면, 대시보드, 검색/필터 포함
+- CLI: 최소 5개 커맨드, 테이블 출력, 컬러 포함
+- README.md 생성
+- GitHub push 완료
+
+반환 형식 (JSON만, 다른 텍스트 없음):
+{{
+  "slug": "{idea.slug}",
+  "status": "done | skip",
+  "qa_attempts": <숫자>,
+  "github_url": "<URL 또는 null>",
+  "errors_fixed": ["<오류 1줄 요약>"],
+  "skipped_reason": null
+}}
+""",
+    run_in_background=False
+  )
+
+  PROJECT_LOG.append(result)
+
+  # 메인 컨텍스트에는 JSON 요약만 보존
+  # 체크포인트 업데이트 (2-8 참고)
+  checkpoint_update(idea.slug, result)
+
+  # 3개마다 컴팩션 체크포인트
+  completed_count = len([r for r in PROJECT_LOG if r.status == "done"])
+  if completed_count % 3 == 0 and completed_count > 0:
+    # 체크포인트 저장 후 /compact 권고 출력
+    print(f"💾 {completed_count}개 완료 — 컨텍스트 절약을 위해 /compact 를 실행하거나 계속 진행할 수 있습니다.")
+```
+
+> 이 격리 패턴 덕분에 10개 프로젝트를 실행해도 메인 컨텍스트에는 JSON 10줄만 쌓인다.
+
+---
+
 ### autopilot 자율 오케스트레이션 옵션 (OMC_MODE = "omc")
 
 **Phase 2 전체를 `autopilot`에게 위임**하면 사람 개입 없이 완전 자율 실행이 가능하다.
@@ -516,19 +695,33 @@ if slug in CHECKPOINT.completed_projects: SKIP → 다음 아이디어
 Agent(oh-my-claudecode:planner,
   prompt="다음 아이디어의 PRD를 작성하라: {IDEA}.
           플랫폼: {PLATFORM}, 스택: {TECH_STACK}.
-          포함: 타겟 사용자 페르소나, MoSCoW 기능 목록,
-          경쟁 서비스 분석 + 차별점, 데이터 모델 초안, 비기능 요구사항.
+
+          ★ 기능 풍부성 요구사항 (필수):
+          - Must-have 기능을 웹/앱이면 8개 이상, CLI이면 6개 이상 정의
+          - 각 기능은 서브기능 2개 이상 포함 (단순 CRUD만은 금지)
+          - 검색/필터, 통계/대시보드, 빈 상태 처리를 반드시 기능 목록에 포함
+          - 사용자가 매일 쓸 이유가 있는 핵심 기능 1개를 'killer feature'로 명시
+
+          ★ 한국어 UI 요구사항 (필수):
+          - 모든 화면명, 기능명, 버튼명을 한국어로 명시
+          - 예: '대시보드', '내 활동', '설정', '저장하기', '삭제', '검색'
+
+          포함: 타겟 사용자 페르소나, MoSCoW 기능 목록(Must 8개+),
+          경쟁 서비스 분석 + 차별점, 데이터 모델 초안, 비기능 요구사항,
+          화면 목록(웹/앱 6개+, CLI 커맨드 5개+).
           출력 경로: projects/{slug}/docs/PRD.md")
 ```
 
 그 외 모드에서는 직접 작성. 포함 내용:
 - 서비스 개요 및 목적
 - 타겟 사용자 페르소나
-- 핵심 기능 (MoSCoW 우선순위)
+- 핵심 기능 (MoSCoW 우선순위, Must-have 최소 8개)
+- 화면/커맨드 목록 (웹/앱 6개+, CLI 5개+)
 - 경쟁 서비스 분석 및 차별점
 - 선택된 기술 스택 명세 (`TECH_STACK` 기반)
 - 데이터 모델 초안
 - 비기능 요구사항
+- 한국어 UI 텍스트 가이드 (주요 레이블/버튼명)
 
 ---
 
@@ -590,6 +783,18 @@ if PLATFORM in ["웹", "앱"]:
 Agent(oh-my-claudecode:executor,
   prompt="ROADMAP의 Sprint 순서대로 {slug} 구현.
           스택: {TECH_STACK}.
+
+          ★ 한국어 UI 필수 (예외 없음):
+          모든 버튼·레이블·메뉴·플레이스홀더·에러메시지·빈 상태 메시지를
+          한국어로 작성하라. 영어 UI 텍스트는 빌드 실패와 동일하게 처리.
+
+          ★ 기능 풍부성 필수:
+          - 웹/앱: 최소 6개 화면, 검색·필터·빈 상태·로딩·에러 상태 반드시 구현
+          - CLI: 최소 5개 커맨드, 테이블 출력·컬러·진행 상태 표시 포함
+          - 대시보드/통계 화면 반드시 포함 (웹/앱)
+          - 목록 화면에 정렬·필터 기능 1개 이상 포함
+
+          ★ 코드 품질:
           immutable 패턴, Repository 패턴, 명시적 에러 처리 준수.
           완료 기준: 컴파일·린트·빌드 오류 없음, 80%+ 테스트 커버리지.")
 
@@ -616,6 +821,8 @@ Sprint 완료 체크리스트:
 ```
 
 **구현 원칙**:
+- **한국어 UI 필수**: 모든 사용자 대면 텍스트(버튼, 레이블, 메시지, 메뉴)를 한국어로 작성
+- **기능 풍부성 필수**: 웹/앱 6개+ 화면, CLI 5개+ 커맨드. 검색·필터·빈 상태·에러 상태 포함
 - Immutable 패턴
 - Repository 패턴 (DB 접근 추상화)
 - 명시적 에러 처리
@@ -687,10 +894,44 @@ if QA passed and OMC_MODE == "omc":
             PRD Must-have 기능 체크리스트 기준. 실패 항목은 재현 방법과 함께 보고.")
 ```
 
+**기능 풍부성 게이트 (빌드 통과 후 추가 검증):**
+
+```
+# QA 통과 후 기능 풍부성 체크 (자동)
+FEATURE_GATE_PASS = true
+
+if PLATFORM in ["웹", "앱"]:
+  page_count = count_pages_or_screens(projects/{slug}/)
+  has_search_or_filter = grep("검색|filter|search|필터", src/)
+  has_empty_state = grep("빈 상태|empty|데이터가 없|아직", src/)
+  has_dashboard = grep("대시보드|dashboard|통계|stats", src/)
+  has_korean_ui = check_korean_ui_text(src/)
+
+  if page_count < 6: FEATURE_GATE_PASS = false; reason = f"화면 {page_count}개 (최소 6개)"
+  if not has_search_or_filter: FEATURE_GATE_PASS = false; reason += " | 검색/필터 없음"
+  if not has_dashboard: FEATURE_GATE_PASS = false; reason += " | 대시보드 없음"
+  if not has_korean_ui: FEATURE_GATE_PASS = false; reason += " | 영어 UI 텍스트 발견"
+
+if PLATFORM == "CLI":
+  cmd_count = count_commands(projects/{slug}/)
+  has_table = grep("테이블|table|chalk|color", src/)
+  has_korean_help = grep("한국어|description.*[가-힣]", src/)
+
+  if cmd_count < 5: FEATURE_GATE_PASS = false; reason = f"커맨드 {cmd_count}개 (최소 5개)"
+  if not has_table: FEATURE_GATE_PASS = false; reason += " | 테이블 출력 없음"
+
+if not FEATURE_GATE_PASS:
+  → executor에게 재작업 지시:
+    "기능 풍부성 기준 미달: {reason}
+     누락된 기능을 추가 구현하라. 기존 기능은 그대로 유지."
+  → QA_ATTEMPTS 카운트에 포함하지 않고 재시도
+```
+
 QA 결과 출력:
 ```
 ━━━ QA 결과: {서비스명} ━━━
 시도: {QA_ATTEMPTS}회  |  결과: ✅ 통과 / ❌ SKIP
+기능 게이트: ✅ 통과 / ⚠️ 재작업 ({reason})
 오류 타입: {오류 분류}
 수정 내역: {수정된 파일 목록}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -706,8 +947,9 @@ QA 통과 후 즉시 생성.
 ```
 Agent(oh-my-claudecode:writer,
   prompt="projects/{slug}/ README.md 작성.
-          PRD + 실제 구현 내용 기반. 영문, 간결하고 기술적인 톤.
-          포함: 서비스 소개, 기능 목록, 기술 스택 표, 설치/실행 방법.")
+          PRD + 실제 구현 내용 기반. 한국어 우선, 간결하고 기술적인 톤.
+          포함: 서비스 소개(한국어), 주요 기능 목록(한국어 기능명),
+          기술 스택 표, 설치/실행 방법, 스크린샷 섹션 자리.")
 ```
 
 그 외 모드에서는 아래 템플릿을 직접 생성.
@@ -715,39 +957,39 @@ Agent(oh-my-claudecode:writer,
 포함 내용:
 
 ```markdown
-# {서비스명} — {한국어 이름}
+# {서비스명}
 
-> {한 줄 설명}
+> {한 줄 설명 (한국어)}
 
-## Features
-- {핵심 기능 1}
-- {핵심 기능 2}
-- {핵심 기능 3}
+## 주요 기능
+- {핵심 기능 1 (한국어)}
+- {핵심 기능 2 (한국어)}
+- {핵심 기능 3 (한국어)}
 
-## Tech Stack
-| Layer | Technology |
-|-------|-----------|
+## 기술 스택
+| 레이어 | 기술 |
+|--------|------|
 | {레이어} | {기술} |
 
-## Getting Started
+## 시작하기
 
-### Prerequisites
+### 필수 환경
 {스택별 필수 환경 — Node 버전, Python 버전 등}
 
-### Installation
+### 설치
 ```bash
 {설치 명령}
 ```
 
-### Usage
+### 실행
 ```bash
 {실행 명령}
 ```
 
-## Screenshots
+## 스크린샷
 > _스크린샷 추가 예정_
 
-## License
+## 라이선스
 MIT
 ```
 
@@ -795,7 +1037,7 @@ Linux/WSL 환경이면 알림을 생략하고 터미널에만 출력.
 
 ---
 
-### 2-8. 체크포인트 저장
+### 2-8. 체크포인트 저장 + 컴팩션 트리거
 
 매 프로젝트 완료 후 즉시 체크포인트 업데이트:
 
@@ -817,6 +1059,25 @@ Linux/WSL 환경이면 알림을 생략하고 터미널에만 출력.
 # 저장
 echo '{...}' > .auto-project-builder-checkpoint.json
 ```
+
+**컴팩션 트리거 (3개 완료마다)**:
+
+```
+completed_count = len(CHECKPOINT.completed_projects)
+if completed_count % 3 == 0 and completed_count > 0:
+  → 체크포인트 파일이 최신 상태임을 확인
+  → 사용자에게 출력:
+    "━━━ 컨텍스트 절약 포인트 ━━━
+     ✅ {completed_count}개 완료 / {PROJECT_COUNT - completed_count}개 남음
+     체크포인트: .auto-project-builder-checkpoint.json
+     지금 /compact 를 실행하면 컨텍스트를 압축하고 이어서 진행할 수 있습니다.
+     (엔터 또는 아무 입력으로 계속 진행)"
+  → 사용자 응답 대기 없이 자동으로 다음 프로젝트 진행
+     (사용자가 /compact 를 실행하면 체크포인트에서 자동 재개됨)
+```
+
+> **재개 방법**: `/compact` 실행 후 `/auto-project-builder` 를 다시 실행하면
+> 체크포인트를 감지하여 "이어서 진행" 선택 → 완료된 프로젝트 건너뜀.
 
 전체 완료 시 체크포인트 파일 삭제:
 ```bash
@@ -956,12 +1217,29 @@ Agent(oh-my-claudecode:planner,
 각 프로젝트 카드:
 ```
 ┌─ 프로젝트 N: {서비스명}  [{PLATFORM} / {TECH_STACK}]
-│  ├─ 아이디어 평가: 시장성 {M}/3 · 독창성 {O}/3 · 구현 {F}/3
-│  ├─ 경쟁 서비스 분석 + 차별점
-│  ├─ 기술적 결정사항 (스택 선택 근거 포함)
-│  ├─ Sprint 진행 타임라인
+│
+│  [아이디어 배경]
+│  ├─ 해결하는 고통: {pain_statement}
+│  ├─ 실제 증거: "{pain_evidence[0]}" / "{pain_evidence[1]}"
+│  ├─ 타겟 사용자: {target_user}
+│  └─ 지금 만들어야 하는 이유: {why_now}
+│
+│  [서비스 내용]
+│  ├─ 핵심 솔루션: {solution}
+│  ├─ 경쟁 서비스: {competitors}
+│  └─ 차별점: {differentiator}
+│
+│  [주요 기능]
+│  ├─ 킬러 기능: {core_features[0]}
+│  ├─ {core_features[1]}
+│  ├─ {core_features[2]}
+│  └─ {core_features[3]} (있는 경우)
+│
+│  [구현 결과]
+│  ├─ 아이디어 평가: 페인 {P}/3 · 시장 {M}/3 · 독창성 {O}/3 · 구현 {F}/3 · 결함 {X} = {T}/15  {verdict}
+│  ├─ 기술적 결정사항: {tech_stack 선택 근거}
 │  ├─ QA 결과: {시도 횟수}회, 수정된 오류 목록
-│  └─ 결과: GitHub URL, 빌드 상태, 구현 범위
+│  └─ GitHub: {URL}  |  빌드: ✅ 성공
 └─
 ```
 
@@ -969,6 +1247,34 @@ Agent(oh-my-claudecode:planner,
 - QA 공통 오류 패턴 (어떤 오류가 자주 발생했는지)
 - 잘 된 점 / 아쉬운 점
 - 다음 실행 개선점
+
+---
+
+**⚠️ 필수 실행: 보고서 파일 생성 알고리즘 (절대 생략 불가)**
+
+> `{RUN_DATE}_report.html` 파일을 디스크에 실제로 저장하는 것은 Phase 3의 **가장 첫 번째 의무**다.
+> overview.html 업데이트 전에 반드시 먼저 완료해야 한다.
+> 이 단계를 건너뛰면 Phase 3 전체가 실패로 간주된다.
+
+```
+1. RUN_DATE 확인
+   → Phase -1에서 이미 캡처됨. 없으면 즉시 캡처: RUN_DATE=$(date +%Y%m%d%H%M)
+
+2. report_data/ 디렉토리의 모든 {slug}_log.json 읽기
+   → PROJECT_LOG[] 재구성 (없으면 이번 세션의 PROJECT_LOG[] 사용)
+
+3. 위 섹션 1~4 구조로 완전한 HTML 작성
+   스타일: Tailwind CDN + 현대적 카드 레이아웃 (기존 overview.html / *_report.html 스타일 참고)
+   언어: 한국어
+   내용: 실행된 모든 프로젝트 데이터를 실제 값으로 채움 (플레이스홀더 금지)
+
+4. 파일 저장 (Write 도구 또는 bash heredoc 사용):
+   경로: ./{RUN_DATE}_report.html  (작업 디렉토리 루트)
+
+5. 저장 확인:
+   ls -la {RUN_DATE}_report.html
+   → 파일이 없거나 크기가 1KB 미만이면 즉시 재생성
+```
 
 ---
 
@@ -1212,6 +1518,18 @@ if PLATFORM in ["웹", "앱"]:
 Agent(oh-my-claudecode:executor,
   prompt="ROADMAP의 Sprint 순서대로 {slug} 구현.
           스택: {TECH_STACK}.
+
+          ★ 한국어 UI 필수 (예외 없음):
+          모든 버튼·레이블·메뉴·플레이스홀더·에러메시지·빈 상태 메시지를
+          한국어로 작성하라. 영어 UI 텍스트 발견 시 즉시 수정.
+
+          ★ 기능 풍부성 필수:
+          - 웹/앱: 최소 6개 화면, 검색·필터·빈 상태·로딩·에러 상태 반드시 구현
+          - CLI: 최소 5개 커맨드, 테이블 출력·컬러·진행 상태 표시 포함
+          - 대시보드/통계 화면 반드시 포함 (웹/앱)
+          - 목록 화면에 정렬·필터 기능 1개 이상 포함
+
+          ★ 코드 품질:
           immutable 패턴, Repository 패턴, 명시적 에러 처리 준수.
           완료 기준: tsc/lint/build 오류 없음.")
 
@@ -1411,5 +1729,5 @@ GitHub push 실패 시 최대 3회 재시도 (지수 백오프 5s→10s→20s).
 - `.env.local` `.gitignore` 추가, `.env.example` 커밋
 - `overview.html`은 누적 파일 — 절대 삭제하거나 전체를 교체하지 않음. 항상 기존 내용 보존 + 새 내용 추가만 허용
 - `{RUN_DATE}_report.html` 파일명에 시분(HHmm)이 포함되므로, 같은 날 여러 번 실행해도 파일이 덮어쓰이지 않음 (예: `202605242157_report.html`)
-- `RUN_DATE`는 Phase 3 시작 시 `date +%Y%m%d%H%M` 형식으로 캡처 (예: `202605242157`)
+- `RUN_DATE`는 **Phase -1 시작 즉시** `date +%Y%m%d%H%M` 형식으로 캡처 — 이후 절대 변경하지 않음 (예: `202605242157`)
 - `.auto-project-builder-checkpoint.json`은 실행 중에만 존재 — 완료 시 자동 삭제
