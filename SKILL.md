@@ -15,6 +15,10 @@ triggers:
 > 빌드 오류, 타입 오류, 린트 오류가 남은 프로젝트는 "완성"이 아니다.
 > 사람은 완성된 결과물만 받는다.
 
+> **⚠️ 모든 프로젝트는 반드시 `projects/` 디렉토리 안에서 구현한다. (절대 예외 없음)**
+> PRD, ROADMAP, 소스 코드, README 등 프로젝트 관련 모든 파일은 `projects/{slug}/` 경로에 위치해야 한다.
+> `projects/` 바깥에 소스 코드를 생성하거나 수정하는 것은 금지된다.
+
 ---
 
 ## 컨텍스트 관리 원칙 (Context Budget)
@@ -448,8 +452,12 @@ WebSearch("{SERVICE_CATEGORIES} best apps 2025 market trends")
 | `REPLACEMENT_ATTEMPTS` | Phase 1.3 + 1.5 | 정수, 최대 PROJECT_COUNT×3 |
 | `PROJECT_LOG[]` | Phase 2 | 완료 프로젝트 로그 |
 | `QA_ATTEMPTS` | Phase 2-4 | 프로젝트별 QA 재시도 횟수 |
+| `DESIGNER_OUTPUT_PATH` | Phase 2-3 (웹/앱만) | string: `projects/{slug}/UI_GUIDE.md`; 웹/앱 아닌 경우 null |
+| `GITHUB_URLS[]` | Phase 2-6 | string[]: push 완료된 저장소 URL 목록 |
+| `SKIPPED_PROJECTS[]` | Phase 2 | string[]: status="skip"인 프로젝트 slug 목록 |
 | `RUN_DATE` | Phase -1 시작 즉시 | YYYYMMDDHHmm 형식 (년월일시분, 예: `202605242157`) — 이후 절대 변경하지 않음 |
 | `CHECKPOINT_FILE` | Phase -1 | `.auto-project-builder-checkpoint.json` |
+| `USE_AUTOPILOT` | Phase 2 시작 직전 | bool; `(OMC_MODE == "omc") AND (user_requested_autopilot OR PROJECT_COUNT >= 5)` — True이면 루프 건너뛰고 autopilot Skill 호출 |
 
 ---
 
@@ -579,28 +587,71 @@ gh repo list --limit 200 --json name,description,url
 
 `APPROVED_IDEAS[]`를 순회하며 각 프로젝트를 `TECH_STACK` 기준으로 구현.
 
-### ⚠️ 프로젝트별 Agent 격리 (컨텍스트 보호 — 절대 예외 없음)
+### ⚠️ 프로젝트별 실행 전략 (OMC_MODE에 따라 분기)
 
-**메인 루프는 각 프로젝트를 독립 Agent로 위임하고 JSON 요약만 수집한다.**
-Phase 2-1~2-10의 모든 단계(PRD, 구현, QA, README, push)는 해당 Agent 내부에서 실행된다.
+**메인 루프는 OMC_MODE와 USE_AUTOPILOT에 따라 다른 전략으로 각 프로젝트를 처리한다.**
+- **전략 A (기본)**: OMC 에이전트를 단계별 순차 호출 (`_run_omc_pipeline`)
+- **전략 B**: autopilot에 Phase 2 전체 위임 (루프를 건너뜀)
+- **기본 모드**: 단일 Agent가 전체 단계를 처리
+
+모든 결과물(PRD, ROADMAP, 코드)은 **디스크에 저장**되며, 메인 컨텍스트에는 단계별 한 줄 요약과 최종 JSON만 수집된다.
 
 ```
-# 메인 루프 — 컨텍스트 오염 없는 격리 패턴
+# 메인 루프
 PROJECT_LOG = []
 
-for idea in APPROVED_IDEAS:
-  if idea.slug in CHECKPOINT.completed_projects:
-    continue  # 이미 완료된 프로젝트는 건너뜀
+# ──────────────────────────────────────────────────────────────────
+# 전략 선택: OMC 모드에서 autopilot 전략 B를 선택하면 루프를 건너뜀
+# USE_AUTOPILOT = True 조건:
+#   - 사용자가 명시적으로 autopilot 사용을 요청한 경우, 또는
+#   - PROJECT_COUNT >= 5 이고 모니터링 없이 완전 자율 실행을 원하는 경우
+# ──────────────────────────────────────────────────────────────────
+USE_AUTOPILOT = (OMC_MODE == "omc") AND (user_requested_autopilot OR PROJECT_COUNT >= 5)
 
-  # 아이디어 요약만 전달 (전체 객체 금지 — 불필요한 컨텍스트 증가 방지)
-  idea_summary = {
-    "slug": idea.slug,
-    "name_ko": idea.name_ko,
-    "tech_stack": idea.tech_stack,
-    "core_features": idea.core_features,   # 기능 목록만
-    "platform": PLATFORM
-  }
+if USE_AUTOPILOT:
+  # 전략 B: autopilot에 Phase 2 전체 위임 (아래 "OMC 모드 실행 전략 선택" 섹션 참조)
+  Skill("oh-my-claudecode:autopilot",
+    prompt="{PROJECT_COUNT}개 프로젝트를 아래 사양으로 처음부터 끝까지 완성하라.
+            프로젝트 목록: {APPROVED_IDEAS}
+            공통: PLATFORM={PLATFORM}, TECH_STACK={TECH_STACK}, 작업 경로=projects/{slug}/
+            단계 순서: PRD → ROADMAP → 구현 → QA(최대 3회) → README → push
+            QA 3회 실패 시 MoSCoW SHOULD/COULD 기능 제거 후 재시도, 그래도 실패 시 SKIP.")
+  # autopilot 완료 후 Phase 3(리포트)로 바로 이동
+else:
+  # 전략 A (기본): 프로젝트별 루프
+  for idea in APPROVED_IDEAS:
+    if idea.slug in CHECKPOINT.completed_projects:
+      continue  # 이미 완료된 프로젝트는 건너뜀
 
+    idea_summary = {
+      "slug": idea.slug,
+      "name_ko": idea.name_ko,
+      "tech_stack": idea.tech_stack,
+      "core_features": idea.core_features,
+      "platform": PLATFORM
+    }
+
+    if OMC_MODE == "omc":
+      result = _run_omc_pipeline(idea, idea_summary)   # 전문 OMC 에이전트 파이프라인
+    else:
+      result = _run_default_pipeline(idea, idea_summary)  # 단일 에이전트 처리
+
+    PROJECT_LOG.append(result)
+    checkpoint_update(idea.slug, result)
+
+    completed_count = len([r for r in PROJECT_LOG if r.status == "done"])
+    if completed_count % 3 == 0 and completed_count > 0:
+      print(f"💾 {completed_count}개 완료 — 컨텍스트 절약을 위해 /compact 를 실행하거나 계속 진행할 수 있습니다.")
+```
+
+---
+
+#### _run_default_pipeline (OMC_MODE != "omc")
+
+단일 Agent가 PRD → ROADMAP → 구현 → QA → README → push를 모두 처리한다.
+
+```
+def _run_default_pipeline(idea, idea_summary):
   result = Agent(
     prompt=f"""
 아래 프로젝트를 처음부터 끝까지 완성하라.
@@ -610,8 +661,14 @@ for idea in APPROVED_IDEAS:
 스택: {idea.tech_stack}
 작업 경로: projects/{idea.slug}/
 
-완료 순서: PRD 작성 → ROADMAP → 구현 → QA 루프(최대 3회) → README → GitHub push
-모든 단계는 이 Agent 내부에서 직접 실행하라.
+★ 필수 실행 순서 (절대 예외 없음):
+1. PRD 작성 → projects/{idea.slug}/PRD.md 파일로 저장
+2. ROADMAP 작성 → projects/{idea.slug}/ROADMAP.md 파일로 저장
+   ★★★ ROADMAP.md가 존재하지 않으면 구현(3단계)으로 절대 진행하지 않는다 ★★★
+3. 구현 → ROADMAP.md를 읽고 Sprint 번호 순서대로 (임의 변경 금지)
+4. QA 루프 (최대 3회)
+5. README.md 생성
+6. GitHub push
 
 완료 기준:
 - tsc/lint/build 오류 0개
@@ -633,30 +690,197 @@ for idea in APPROVED_IDEAS:
 """,
     run_in_background=False
   )
-
-  PROJECT_LOG.append(result)
-
-  # 메인 컨텍스트에는 JSON 요약만 보존
-  # 체크포인트 업데이트 (2-8 참고)
-  checkpoint_update(idea.slug, result)
-
-  # 3개마다 컴팩션 체크포인트
-  completed_count = len([r for r in PROJECT_LOG if r.status == "done"])
-  if completed_count % 3 == 0 and completed_count > 0:
-    # 체크포인트 저장 후 /compact 권고 출력
-    print(f"💾 {completed_count}개 완료 — 컨텍스트 절약을 위해 /compact 를 실행하거나 계속 진행할 수 있습니다.")
+  return result
 ```
-
-> 이 격리 패턴 덕분에 10개 프로젝트를 실행해도 메인 컨텍스트에는 JSON 10줄만 쌓인다.
 
 ---
 
-### autopilot 자율 오케스트레이션 옵션 (OMC_MODE = "omc")
+#### _run_omc_pipeline (OMC_MODE == "omc")
 
-**Phase 2 전체를 `autopilot`에게 위임**하면 사람 개입 없이 완전 자율 실행이 가능하다.
-autopilot은 아이디어부터 동작하는 코드까지 전체 파이프라인을 자율 조율한다 (ultrawork는 병렬 실행 컴포넌트이지 완전 파이프라인이 아니다).
+전문 OMC 에이전트를 단계별로 순차 호출한다. 각 에이전트는 결과물을 **디스크에 저장**하고
+**한 줄 요약만** 메인 컨텍스트로 반환한다 — 컨텍스트 오염 없음.
+
+**★ PRD → ROADMAP 순서는 절대 예외가 없다. ROADMAP.md 없이 구현을 시작하면 절대 안 된다.**
 
 ```
+def _run_omc_pipeline(idea, idea_summary):
+  slug = idea.slug
+  errors_fixed = []
+  qa_attempts = 0
+  github_url = None
+  high_issues_count = 0
+
+  # ── Phase 2-1: PRD 작성 (oh-my-claudecode:planner) ───────────────
+  Agent(oh-my-claudecode:planner,
+    prompt="다음 아이디어의 PRD를 작성하라: {idea_summary}.
+            플랫폼: {PLATFORM}, 스택: {idea.tech_stack}.
+            Must-have 기능 웹/앱 8개 이상, CLI 6개 이상 정의.
+            각 기능에 서브기능 2개 이상 포함 (단순 CRUD만 금지).
+            검색/필터, 통계/대시보드, 빈 상태 처리를 Must-have에 반드시 포함.
+            한국어 UI 텍스트 가이드(주요 버튼·레이블·메시지) 포함.
+            출력 경로: projects/{slug}/PRD.md
+            완료 후 한 줄 상태만 반환: 'PRD 완료 | Must-have N개'")
+
+  # ── PRD.md 존재 검증 (필수 게이트) ─────────────────────────────────
+  if not file_exists(f"projects/{slug}/PRD.md"):
+    # planner 실패 폴백: 직접 최소 PRD 작성
+    # idea_summary.core_features 기반으로 Must-have 8개+ 직접 생성
+    # 형식: MoSCoW 테이블(Must/Should/Could), 타겟 페르소나, 화면 목록, 한국어 UI 가이드
+    # 스택별 비기능 요구사항(성능·보안·접근성) 포함
+    Write(f"projects/{slug}/PRD.md", content=generate_minimal_prd(idea_summary))
+    if not file_exists(f"projects/{slug}/PRD.md"):
+      return {"slug": slug, "status": "skip", "qa_attempts": 0,
+              "github_url": null, "errors_fixed": [], "skipped_reason": "PRD 생성 실패"}
+
+  # ── Phase 2-2: ROADMAP 작성 (oh-my-claudecode:architect) ─────────
+  Agent(oh-my-claudecode:architect,
+    prompt="PRD(projects/{slug}/PRD.md) 기반 기술 아키텍처 설계.
+            스택: {idea.tech_stack}.
+            Sprint 계획(번호·목표·완료 기준 명시), DB 스키마, 컴포넌트 구조도, 기술 결정 근거 포함.
+            각 Sprint는 독립 완료 가능 단위로 작성하여 executor가 Sprint 번호 순서대로 구현할 수 있게 하라.
+            출력 경로: projects/{slug}/ROADMAP.md
+            완료 후 한 줄 상태만 반환: 'ROADMAP 완료 | Sprint N개'")
+
+  # ── ROADMAP.md 존재 검증 ★★★ 구현 전 절대 필수 게이트 ★★★ ────────
+  if not file_exists(f"projects/{slug}/ROADMAP.md"):
+    # architect 실패 폴백: 스택별 기본 Sprint 구조로 직접 ROADMAP 작성
+    # 웹→Sprint 0~6, 앱→Sprint 0~5, CLI→Sprint 0~5 (Phase 2-2 참고)
+    # PRD Must-have 기능을 Sprint에 균등 분배, 각 Sprint에 완료 기준 명시
+    # DB 스키마·컴포넌트 구조도는 기본 형식으로 포함
+    Write(f"projects/{slug}/ROADMAP.md", content=generate_minimal_roadmap(idea_summary, PLATFORM))
+    if not file_exists(f"projects/{slug}/ROADMAP.md"):
+      return {"slug": slug, "status": "skip", "qa_attempts": 0,
+              "github_url": null, "errors_fixed": [], "skipped_reason": "ROADMAP 생성 실패"}
+  # ROADMAP.md 없이는 절대로 구현(Phase 2-3)으로 진행하지 않는다
+
+  # ── Phase 2-3: 구현 ──────────────────────────────────────────────
+
+  # 웹/앱: designer가 먼저 UI 가이드 작성 (oh-my-claudecode:designer)
+  if PLATFORM in ["웹", "앱"]:
+    Agent(oh-my-claudecode:designer,
+      prompt="PRD(projects/{slug}/PRD.md) + ROADMAP(projects/{slug}/ROADMAP.md) 기반 UI/UX 설계.
+              컴포넌트 목록, 색상 팔레트, 레이아웃 초안 제공. 스택: {idea.tech_stack}.
+              ★ 출력 경로: projects/{slug}/UI_GUIDE.md (반드시 이 경로에 마크다운으로 저장)
+              완료 후 한 줄 상태만 반환: 'UI가이드 완료 | 컴포넌트 N개'")
+
+  # executor: ROADMAP Sprint 순서대로 구현 (oh-my-claudecode:executor)
+  Agent(oh-my-claudecode:executor,
+    prompt="구현 시작 전 projects/{slug}/ROADMAP.md를 반드시 읽고
+            Sprint 번호 순서대로 완료 기준 확인 후 구현하라. 스택: {idea.tech_stack}.
+            ★ 파일 위치: 모든 파일은 projects/{slug}/ 안에만 생성·수정 (바깥 경로 절대 금지)
+            ★ ROADMAP Sprint 순서 준수 — 임의 변경 금지, 완료 기준 충족 후 다음 Sprint 진행
+            ★ 웹/앱: projects/{slug}/UI_GUIDE.md 가 존재하면 반드시 읽고 UI 설계를 따르라
+            ★ 한국어 UI 필수 — 모든 버튼·레이블·메뉴·메시지·빈 상태 메시지
+            ★ 웹/앱: 최소 6개 화면, 대시보드/통계, 검색/필터, 빈 상태·로딩·에러 상태 포함
+            ★ CLI: 최소 5개 커맨드, 테이블 출력, 컬러, 진행 상태 표시 포함
+            ★ 코드 품질: immutable 패턴, Repository 패턴, 명시적 에러 처리
+            완료 후 한 줄 상태만 반환: '구현 완료 | 파일 N개 | Sprint N개 완료'")
+
+  # 코드 리뷰 (oh-my-claudecode:code-reviewer)
+  review_result = Agent(oh-my-claudecode:code-reviewer,
+    prompt="projects/{slug}/ 코드 리뷰. CRITICAL/HIGH 이슈 직접 수정.
+            완료 후 한 줄 상태만 반환: '리뷰 완료 | CRITICAL N개, HIGH N개 수정'")
+  high_issues_count = parse_high_count(review_result)
+
+  # 보안 검토 — 인증/외부 API/사용자 입력 처리가 있는 경우 (oh-my-claudecode:security-reviewer)
+  if PRD includes "auth" OR "user input" OR "external API":
+    Agent(oh-my-claudecode:security-reviewer,
+      prompt="projects/{slug}/ OWASP Top 10 기준 보안 취약점 검토. CRITICAL 즉시 수정.
+              완료 후 한 줄 상태만 반환: '보안검토 완료 | CRITICAL N개 수정'")
+
+  # ── Phase 2-4: QA 루프 ──────────────────────────────────────────
+  while qa_attempts < 3:
+    qa_result = run_qa_commands(slug)
+    if qa_result.success: break
+
+    qa_attempts += 1
+    errors_fixed.extend(qa_result.errors)
+
+    # debugger: 근본 원인 분석 + 수정 (oh-my-claudecode:debugger)
+    Agent(oh-my-claudecode:debugger,
+      prompt="다음 빌드 오류를 근본 원인부터 분석하고 수정하라: {qa_result.errors}
+              프로젝트: projects/{slug}/ 스택: {idea.tech_stack}
+              완료 후 한 줄 상태만 반환: '디버그 완료 | 수정 N건'")
+
+  if qa_attempts == 3 and not qa_result.success:
+    # 스코프 축소: PRD MoSCoW 테이블의 SHOULD-have / COULD-have 항목 전부 제거
+    # Must-have 기능의 관련 소스 파일·라우트·컴포넌트만 남기고 나머지 삭제 또는 stub 처리
+    # ROADMAP의 관련 Sprint 태스크도 동일하게 제거
+    Agent(oh-my-claudecode:executor,
+      prompt="projects/{slug}/PRD.md의 MoSCoW 테이블에서 SHOULD-have / COULD-have 항목을 전부 제거하라.
+              Must-have 항목만 남기고, 해당하지 않는 소스 파일·라우트·컴포넌트를 삭제 또는 stub 처리.
+              projects/{slug}/ROADMAP.md의 관련 Sprint 태스크도 동일하게 제거.
+              이후 Must-have 기능만으로 재구현하라.")
+    qa_result = run_qa_commands(slug)
+    if not qa_result.success:
+      return {"slug": slug, "status": "skip", "qa_attempts": qa_attempts,
+              "github_url": null, "errors_fixed": errors_fixed,
+              "skipped_reason": "QA 3회 실패 + 스코프 축소 후에도 빌드 불통"}
+
+  # QA 통과 후 기능 검증 (oh-my-claudecode:verifier)
+  Agent(oh-my-claudecode:verifier,
+    prompt="projects/{slug}/ PRD Must-have 기능이 실제 동작하는지 검증.
+            실패 항목은 구체적 재현 방법과 함께 보고.
+            완료 후 한 줄 상태만 반환: '검증 완료 | 통과 N/M개'")
+
+  # ── ralph 품질 개선 루프 (자동 조건 충족 시) ──────────────────────
+  # 아래 조건 중 하나 이상 충족 시 ralph 자동 실행:
+  if qa_attempts >= 2 OR idea.score.total <= 6 OR high_issues_count >= 3:
+    Skill("oh-my-claudecode:ralph",
+      prompt="projects/{slug}/ 의 품질을 아래 기준으로 완성하라.
+              Acceptance Criteria:
+              1. 테스트 커버리지 80% 이상
+              2. tsc/lint/build 오류 0개
+              3. 모든 에러 경계에서 명시적 에러 처리
+              4. 함수/컴포넌트 200줄 이하
+              5. PRD Must-have 기능 전부 동작
+              제약: 기존 기능 동작 유지, 스코프 확장 금지.")
+
+  # ── Phase 2-5: README 작성 (oh-my-claudecode:writer) ─────────────
+  Agent(oh-my-claudecode:writer,
+    prompt="projects/{slug}/ README.md 작성. PRD + 실제 구현 기반.
+            포함: 서비스 소개, 기능 목록, 기술 스택 표, 설치/실행 방법.
+            언어: 영문, 톤: 간결하고 기술적.
+            완료 후 한 줄 상태만 반환: 'README 완료'")
+
+  # ── Phase 2-6: GitHub Push (oh-my-claudecode:git-master) ─────────
+  git_result = Agent(oh-my-claudecode:git-master,
+    prompt="projects/{slug}/ 를 새 GitHub 저장소 {slug}에 push.
+            커밋 메시지: 'feat: initial implementation of {idea.name_ko}'.
+            저장소 설명: '{idea 한 줄 설명}'.
+            완료 후 한 줄 상태만 반환: 'push 완료 | URL: <URL>'")
+  github_url = parse_url(git_result)
+
+  return {
+    "slug": slug,
+    "status": "done",
+    "qa_attempts": qa_attempts,
+    "github_url": github_url,
+    "errors_fixed": errors_fixed,
+    "skipped_reason": null
+  }
+```
+
+> OMC 파이프라인에서도 각 에이전트는 결과물을 디스크에 저장하고 **한 줄 요약만** 반환한다.
+> 10개 프로젝트를 실행해도 메인 컨텍스트에는 단계별 한 줄 로그와 JSON 10줄만 쌓인다.
+
+---
+
+### OMC 모드 실행 전략 선택 (OMC_MODE = "omc")
+
+OMC 모드에서는 **두 가지 실행 전략 중 하나를 선택한다.** 혼용하지 않는다.
+
+| 전략 | 언제 사용 | 제어 수준 |
+|------|-----------|-----------|
+| **A. `_run_omc_pipeline` (기본값)** | 단계별 진행 상황을 확인하며 제어하고 싶을 때 | 높음 — 각 에이전트 결과를 확인 후 다음 단계 진행 |
+| **B. autopilot (완전 자율)** | 사람 개입 없이 처음부터 끝까지 자동 완성할 때 | 낮음 — autopilot이 모든 판단을 자율 처리 |
+
+**전략 A (기본값)**: 위의 `_run_omc_pipeline` 함수가 호출된다. planner → architect → designer → executor → code-reviewer → debugger → verifier → writer → git-master 순서로 각 OMC 전문 에이전트를 단계별 호출.
+
+**전략 B (autopilot)**: 사용자가 명시적으로 autopilot 사용을 요청하거나 PROJECT_COUNT ≥ 5이고 모니터링 없이 완전 자율 실행을 원하는 경우.
+
+```
+# 전략 B: autopilot에 Phase 2 전체 위임
 Skill("oh-my-claudecode:autopilot",
   prompt="아래 조건으로 {PROJECT_COUNT}개 프로젝트를 처음부터 끝까지 완성하라.
 
@@ -668,16 +892,16 @@ Skill("oh-my-claudecode:autopilot",
 
   프로젝트 목록: {APPROVED_IDEAS}
   플랫폼: {PLATFORM}  스택: {TECH_STACK}
-  작업 디렉토리: projects/
+  작업 디렉토리: projects/  (모든 파일은 projects/{slug}/ 안에만 생성)
 
   각 프로젝트 완료 시 체크포인트 저장:
   .auto-project-builder-checkpoint.json
 
   단계 순서: PRD → ROADMAP → 구현 → QA 루프(최대 3회) → README → GitHub push
-  QA 실패 3회 시 스코프 축소 후 재시도, 그래도 실패 시 SKIP 마킹 후 다음 진행.")
+  QA 실패 3회 시 MoSCoW SHOULD/COULD 기능 제거 후 재시도, 그래도 실패 시 SKIP 마킹.")
 ```
 
-autopilot을 사용하지 않는 경우(기본값)에는 아래 단계별 루프로 직접 진행.
+> **주의**: 전략 A와 B를 동시에 실행하지 않는다. 전략 B를 선택하면 `_run_omc_pipeline` 루프를 건너뛴다.
 
 ---
 
@@ -685,6 +909,15 @@ autopilot을 사용하지 않는 경우(기본값)에는 아래 단계별 루프
 ```
 if slug in CHECKPOINT.completed_projects: SKIP → 다음 아이디어
 ```
+
+---
+
+---
+
+> **📌 참조 문서 (Phase 2-1 ~ 2-6)**
+> 아래 섹션은 각 단계의 요구 사항 명세이다.
+> **실제 실행 코드는 `_run_omc_pipeline` 함수 (위)가 권위 있는 원본이다.**
+> 두 섹션이 상충하면 `_run_omc_pipeline`의 코드를 따른다.
 
 ---
 
@@ -893,8 +1126,13 @@ while QA_ATTEMPTS < MAX_QA_ATTEMPTS:
     → 수정 후 재시도
 
   if QA_ATTEMPTS == 3 and not result.success:
-    → 스코프 축소: Nice-to-have 기능 제거, Must-have만 남기고 재구현
-    → 최종 QA 1회 더 실행
+    → 스코프 축소:
+       PRD MoSCoW 테이블에서 SHOULD-have / COULD-have 항목을 전부 제거.
+       Must-have 항목만 남기고 해당 기능의 소스 파일·라우트·컴포넌트를 삭제 또는 stub 처리.
+       ROADMAP의 관련 Sprint 태스크도 동일하게 제거.
+       (Must-have 정의: PRD MoSCoW 테이블의 'Must' 행에 명시된 항목만 해당)
+    → 스코프 축소 후 executor에게 Must-have 기준 재구현 지시
+    → 재구현 완료 후 최종 QA 1회 더 실행
     → 그래도 실패 시 SKIP 마킹 + report_data에 오류 기록
 
 # QA 통과 후 — OMC_MODE == "omc" 이면 verifier로 기능 동작 최종 확인
@@ -1497,132 +1735,11 @@ Skill("oh-my-claudecode:autopilot",
   각 프로젝트는 독립적으로 병렬 실행 가능하면 병렬로 처리하라.")
 ```
 
-autopilot을 사용하지 않는 경우(기본값)에는 아래 Phase 2-1 ~ 2-6 단계별 루프로 직접 진행.
+autopilot을 사용하지 않는 경우(기본값)에는 `_run_omc_pipeline` 함수(Phase 2 루프 섹션)가 실행된다.
 
----
-
-#### Phase 2-1: PRD 작성
-
-```
-Agent(oh-my-claudecode:planner,
-  prompt="다음 아이디어의 PRD를 작성하라: {IDEA}.
-          플랫폼: {PLATFORM}, 스택: {TECH_STACK}.
-          포함: 페르소나, MoSCoW 기능 목록(Must-have 웹/앱 8개+, CLI 6개+),
-          데이터 모델 초안, 비기능 요구사항, 한국어 UI 텍스트 가이드.
-          출력 경로: projects/{slug}/PRD.md")
-```
-
-#### Phase 2-2: ROADMAP + 아키텍처 설계
-
-```
-Agent(oh-my-claudecode:architect,
-  prompt="PRD(projects/{slug}/PRD.md) 기반으로 기술 아키텍처 설계.
-          스택: {TECH_STACK}.
-          Sprint 계획(번호·목표·완료 기준 명시), DB 스키마, 컴포넌트 구조도 포함.
-          각 Sprint는 독립적으로 완료 가능한 단위로 쪼개어,
-          executor가 Sprint 번호 순서대로 구현할 수 있도록 상세히 작성하라.
-          출력 경로: projects/{slug}/ROADMAP.md")
-```
-
-#### Phase 2-3: 구현
-
-```
-# 웹/앱 — UI 있는 플랫폼: designer가 먼저 UI 가이드 작성
-if PLATFORM in ["웹", "앱"]:
-  Agent(oh-my-claudecode:designer,
-    prompt="PRD(projects/{slug}/PRD.md) + ROADMAP(projects/{slug}/ROADMAP.md) 기반 UI/UX 설계.
-            컴포넌트 목록, 색상 팔레트, 레이아웃 초안 제공.
-            스택: {TECH_STACK}")
-
-# 구현 — executor가 ROADMAP Sprint 순서대로 코드 작성
-Agent(oh-my-claudecode:executor,
-  prompt="구현 시작 전 projects/{slug}/ROADMAP.md를 반드시 읽고
-          Sprint 번호 순서대로 완료 기준을 확인한 뒤 구현하라.
-          스택: {TECH_STACK}.
-
-          ★ ROADMAP 준수 (절대 예외 없음):
-          - ROADMAP.md의 Sprint 순서를 지킨다 (임의 순서 변경 금지)
-          - 각 Sprint의 완료 기준을 충족한 뒤 다음 Sprint로 넘어간다
-          - PRD Must-have 중 ROADMAP에 누락된 항목 발견 시 Sprint에 추가 후 구현
-
-          ★ 한국어 UI 필수 (예외 없음):
-          모든 버튼·레이블·메뉴·플레이스홀더·에러메시지·빈 상태 메시지를
-          한국어로 작성하라. 영어 UI 텍스트 발견 시 즉시 수정.
-
-          ★ 기능 풍부성 필수:
-          - 웹/앱: 최소 6개 화면, 검색·필터·빈 상태·로딩·에러 상태 반드시 구현
-          - CLI: 최소 5개 커맨드, 테이블 출력·컬러·진행 상태 표시 포함
-          - 대시보드/통계 화면 반드시 포함 (웹/앱)
-          - 목록 화면에 정렬·필터 기능 1개 이상 포함
-
-          ★ 코드 품질:
-          immutable 패턴, Repository 패턴, 명시적 에러 처리 준수.
-          완료 기준: tsc/lint/build 오류 없음.")
-
-# 구현 직후 코드 리뷰 (병렬 가능)
-Agent(oh-my-claudecode:code-reviewer,
-  prompt="projects/{slug}/ 코드 리뷰.
-          CRITICAL/HIGH 이슈만 보고. 수정 사항 직접 적용.")
-
-# 보안 검토 — 인증·외부 API·사용자 입력 처리 코드가 있는 경우
-if PRD includes "auth" OR "user input" OR "external API":
-  Agent(oh-my-claudecode:security-reviewer,
-    prompt="projects/{slug}/ 보안 취약점 검토 (OWASP Top 10 기준).
-            CRITICAL 이슈 발견 시 즉시 수정.")
-```
-
-#### Phase 2-4: QA 루프
-
-```
-QA_ATTEMPTS = 0
-MAX_QA_ATTEMPTS = 3
-
-while QA_ATTEMPTS < MAX_QA_ATTEMPTS:
-  result = run_qa_commands()
-  if result.success: break
-
-  QA_ATTEMPTS += 1
-
-  if QA_ATTEMPTS <= 2:
-    # debugger — 근본 원인 분석 + 수정
-    Agent(oh-my-claudecode:debugger,
-      prompt="다음 빌드 오류를 근본 원인부터 분석하고 수정하라:
-              {QA_ERRORS}
-              프로젝트: projects/{slug}/
-              스택: {TECH_STACK}
-              수정 후 QA 명령 재실행 결과도 보고.")
-
-  if QA_ATTEMPTS == 3 and not result.success:
-    # 스코프 축소 후 최종 시도
-    → Nice-to-have 기능 제거 후 executor로 재구현
-    → QA 1회 더 실행
-
-# QA 통과 후 — verifier로 기능 동작 최종 확인
-Agent(oh-my-claudecode:verifier,
-  prompt="projects/{slug}/ 핵심 기능이 실제로 동작하는지 검증.
-          PRD의 Must-have 기능 체크리스트 기준.
-          실패 항목 있으면 구체적 재현 방법과 함께 보고.")
-```
-
-#### Phase 2-5: README + 문서 생성
-
-```
-Agent(oh-my-claudecode:writer,
-  prompt="projects/{slug}/ README.md 작성.
-          PRD + 실제 구현 내용 기반.
-          포함: 서비스 소개, 기능 목록, 기술 스택 표, 설치/실행 방법.
-          언어: 영문, 톤: 간결하고 기술적.")
-```
-
-#### Phase 2-6: GitHub Push
-
-```
-Agent(oh-my-claudecode:git-master,
-  prompt="projects/{slug}/ 을 새 GitHub 저장소 {slug}에 push.
-          커밋 메시지: 'feat: initial implementation of {서비스명}'.
-          저장소 설명: '{서비스 한 줄 설명}'.
-          push 후 URL 반환.")
-```
+> **Phase 2-1 ~ 2-6 상세 에이전트 프롬프트 및 요구 사항 명세는**
+> **Phase 2 루프 내 `_run_omc_pipeline` 코드 블록을 참조한다.**
+> 본 "Agent 위임 전략" 섹션과 `_run_omc_pipeline`이 상충하면 **`_run_omc_pipeline`이 우선한다.**
 
 #### 품질 반복 개선 — ralph 루프
 
